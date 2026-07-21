@@ -42,7 +42,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
 
 ```vim
 call plug#begin()
-Plug 'your-username/vim-org'       " from GitHub
+Plug 'pornoob/my-vim-org-mode'       " from GitHub
 " or during local development:
 Plug 'E:/path/to/vim-org'
 call plug#end()
@@ -53,7 +53,7 @@ Then run `:PlugInstall`.
 ### Vundle
 
 ```vim
-Plugin 'your-username/vim-org'
+Plugin 'pornoob/my-vim-org-mode'
 " or local:
 Plugin 'file:///E:/path/to/vim-org'
 ```
