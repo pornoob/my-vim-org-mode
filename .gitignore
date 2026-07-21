@@ -1,0 +1,15 @@
+# Vim swap/backup/undo files
+*.swp
+*.swo
+*~
+.netrwhist
+tags
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor directories
+.vscode/
+.idea/
