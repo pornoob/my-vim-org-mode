@@ -40,6 +40,13 @@ if !exists('g:org_agenda_window_height')
   let g:org_agenda_window_height = 20
 endif
 
+" Show past-due SCHEDULED items on today until they are marked done, the way
+" Emacs org-agenda does ('Sched.Nx' = N days since the missed occurrence).
+" Set to 0 to list a repeating task only on its exact occurrence dates.
+if !exists('g:org_agenda_show_past_scheduled')
+  let g:org_agenda_show_past_scheduled = 1
+endif
+
 " Agenda day view: first and last hour shown in the timeline (24-hour clock).
 if !exists('g:org_agenda_day_start')
   let g:org_agenda_day_start = 7

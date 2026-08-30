@@ -144,8 +144,8 @@ syntax match orgPriority  /\[#[D-Z]\]/ contained
 syntax match orgTag /\(:\w\+\)\+:$/ contained
 
 " ── Timestamps ────────────────────────────────────────────────────────────────
-syntax match orgTimestampActive   /<\d\{4}-\d\{2}-\d\{2}\%(\s\+\a\{3}\)\?\%(\s\+\d\{2}:\d\{2}\)\?>/
-syntax match orgTimestampInactive /\[\d\{4}-\d\{2}-\d\{2}\%(\s\+\a\{3}\)\?\%(\s\+\d\{2}:\d\{2}\)\?\]/
+syntax match orgTimestampActive   /<\d\{4}-\d\{2}-\d\{2}\%(\s\+[^>0-9 \t]\+\)\?\%(\s\+\d\{2}:\d\{2}\)\?>/
+syntax match orgTimestampInactive /\[\d\{4}-\d\{2}-\d\{2}\%(\s\+[^]0-9 \t]\+\)\?\%(\s\+\d\{2}:\d\{2}\)\?\]/
 
 " ── Planning lines ────────────────────────────────────────────────────────────
 syntax match orgPlanning /^\s*\%(SCHEDULED\|DEADLINE\|CLOSED\):/

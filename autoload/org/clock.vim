@@ -49,7 +49,7 @@ endfunction
 " Returns the line number, or 0 if none found.
 
 function! s:find_open_clock() abort
-  let pat = '^\s*CLOCK:\s*\[\d\{4}-\d\{2}-\d\{2}\s\+\a\{3}\s\+\d\{2}:\d\{2}\]\s*$'
+  let pat = '^\s*CLOCK:\s*\[\d\{4}-\d\{2}-\d\{2}\s\+\S\+\s\+\d\{2}:\d\{2}\]\s*$'
   for lnum in range(1, line('$'))
     if getline(lnum) =~# pat
       return lnum
@@ -84,7 +84,7 @@ function! s:clock_out_at(clock_lnum) abort
 
   " Parse components for duration arithmetic
   let m = matchlist(ts_in,
-        \ '\[\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)\s\+\a\{3}\s\+\(\d\{2}\):\(\d\{2}\)\]')
+        \ '\[\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)\s\+\S\+\s\+\(\d\{2}\):\(\d\{2}\)\]')
   if empty(m)
     echohl WarningMsg
     echo 'org: malformed clock timestamp: ' . ts_in
@@ -105,6 +105,44 @@ function! s:clock_out_at(clock_lnum) abort
   " Org format: CLOCK: [start]--[end] =>  H:MM  (two spaces before hours)
   call setline(a:clock_lnum,
         \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' =>  ' . dur_str)
+endfunction
+
+" ── Recalculate a closed CLOCK entry's duration from its timestamps ──────────
+" Lets a manually-edited "CLOCK: [start]--[end] =>  H:MM" line have its H:MM
+" recomputed to match whatever [start]--[end] now says.
+
+function! s:parse_bracket_ts(ts) abort
+  let m = matchlist(a:ts,
+        \ '\[\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)\s\+\S\+\s\+\(\d\{2}\):\(\d\{2}\)\]')
+  if empty(m) | return -1 | endif
+  return s:parse_ts(m[1], m[2], m[3], m[4], m[5])
+endfunction
+
+" Returns 1 on success, 0 if the line isn't a closed clock entry, -1 on a
+" malformed timestamp.
+function! s:recalc_closed_at(lnum) abort
+  let l     = getline(a:lnum)
+  let parts = matchlist(l, '^\(\s*\)CLOCK:\s*\(\[.\{-}\]\)--\(\[.\{-}\]\)')
+  if empty(parts)
+    return 0
+  endif
+  let [indent, ts_in, ts_out] = parts[1:3]
+
+  let start_epoch = s:parse_bracket_ts(ts_in)
+  let end_epoch   = s:parse_bracket_ts(ts_out)
+  if start_epoch < 0 || end_epoch < 0
+    echohl WarningMsg
+    echo 'org: malformed clock timestamp on line ' . a:lnum
+    echohl None
+    return -1
+  endif
+
+  let elapsed = end_epoch - start_epoch
+  if elapsed < 0 | let elapsed = 0 | endif
+
+  call setline(a:lnum,
+        \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' =>  ' . s:format_duration(elapsed))
+  return 1
 endfunction
 
 " ── Public API ────────────────────────────────────────────────────────────────
@@ -146,4 +184,26 @@ function! org#clock#toggle() abort
   else
     call org#clock#in()
   endif
+endfunction
+
+" Recalculate the duration of the closed CLOCK entry on the current line
+" (e.g. after hand-editing its [start] or [end] timestamp).
+function! org#clock#update() abort
+  let res = s:recalc_closed_at(line('.'))
+  if res == 0
+    echo 'org: no closed clock entry on this line'
+  elseif res == 1
+    echo 'org: clock duration recalculated'
+  endif
+endfunction
+
+" Recalculate every closed CLOCK entry's duration in the buffer.
+function! org#clock#update_all() abort
+  let n = 0
+  for lnum in range(1, line('$'))
+    if s:recalc_closed_at(lnum) == 1
+      let n += 1
+    endif
+  endfor
+  echo 'org: recalculated ' . n . ' clock ' . (n == 1 ? 'entry' : 'entries')
 endfunction

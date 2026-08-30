@@ -7,6 +7,8 @@ command! OrgReload        call org#config#reload()
 command! OrgClockIn       call org#clock#in()
 command! OrgClockOut      call org#clock#out()
 command! OrgClockToggle   call org#clock#toggle()
+command! OrgClockUpdate    call org#clock#update()
+command! OrgClockUpdateAll call org#clock#update_all()
 command! OrgPromote       call org#headline#promote()
 command! OrgDemote        call org#headline#demote()
 command! OrgSchedule      call org#date#schedule()
@@ -19,6 +21,7 @@ command! OrgSetID          call org#id#set()
 command! OrgArchive        call org#archive#subtree()
 command! OrgCapture        call org#capture#open()
 command! OrgClockReport    call org#clockreport#update()
+command! OrgCtrlC          call org#dispatch#ctrl_c()
 
 " ── Re-apply org highlights whenever a colorscheme is loaded ─────────────────
 augroup org_highlight_guard

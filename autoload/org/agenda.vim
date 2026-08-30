@@ -106,7 +106,10 @@ function! s:get_files() abort
   endif
 
   let files = []
-  for entry in entries
+  for raw_entry in entries
+    " Expand ~, $VARs and wildcards first: isdirectory() and filereadable()
+    " do NOT perform this expansion, so a '~/org' entry would be skipped.
+    let entry = expand(raw_entry)
     " Try native path then forward-slash variant (Windows compat)
     let fwd = substitute(entry, '\\', '/', 'g')
     if isdirectory(entry) || isdirectory(fwd)
@@ -145,6 +148,31 @@ function! s:kw_dict() abort
   return {'active': active, 'done': done, 'all': active + done}
 endfunction
 
+" Parse a scanned file's own #+SEQ_TODO: / #+TODO: directive from its lines.
+" Agenda scanning must not consult the *current buffer*, but each file's own
+" keywords are authoritative for that file (PAYED, REPEAT, MISSED ...).
+" Returns {} when the file declares none, so the global list is used instead.
+function! s:file_kw(lines) abort
+  let active = []
+  let done   = []
+  for l in a:lines[0 : min([len(a:lines), 200]) - 1]
+    let m = matchlist(l, '^\c\s*#+\%(SEQ_TODO\|TODO\):\s*\(.*\)$')
+    if empty(m) | continue | endif
+    let in_done = 0
+    for tok in split(m[1], '\s\+')
+      if tok ==# '|'
+        let in_done = 1
+      else
+        " Strip the shortcut/logging suffix: DONE(d@/!) -> DONE
+        let k = substitute(tok, '([^)]*)$', '', '')
+        if !empty(k) | call add(in_done ? done : active, k) | endif
+      endif
+    endfor
+    return {'active': active, 'done': done, 'all': active + done}
+  endfor
+  return {}
+endfunction
+
 function! s:scan_files() abort
   let kw    = s:kw_dict()
   let items = []
@@ -158,7 +186,10 @@ function! s:scan_file(path, kw) abort
   let items  = []
   let lines  = readfile(a:path)
   let nlines = len(lines)
-  let all_kw = a:kw.all
+  " File-local #+SEQ_TODO wins for this file; else the global keyword list
+  let fkw    = s:file_kw(lines)
+  let kwset  = empty(fkw) ? a:kw : fkw
+  let all_kw = kwset.all
   let lnum   = 0
 
   while lnum < nlines
@@ -190,6 +221,7 @@ function! s:scan_file(path, kw) abort
             \ 'lnum':                   lnum + 1,
             \ 'level':                  len(hm[1]),
             \ 'state':                  state,
+            \ 'is_done':                 (!empty(state) && index(kwset.done, state) >= 0),
             \ 'priority':               prio,
             \ 'text':                   text,
             \ 'scheduled_epoch':        -1,
@@ -371,6 +403,65 @@ function! s:stale_label(jdn, base_epoch, rep_n, time_str) abort
   return days > 0 ? days . 'd' : a:time_str
 endfunction
 
+" JDN of the most recent occurrence strictly BEFORE {jdn}, or -1 when the base
+" date is still in the future. Mirrors s:occurs_on()'s repeat semantics, and is
+" what lets a missed repeat keep nagging on today (Emacs org-agenda behaviour).
+function! s:last_occurrence(jdn, base_epoch, rep_n, rep_unit) abort
+  if a:base_epoch < 0 | return -1 | endif
+  let base = s:epoch_to_jdn(a:base_epoch)
+  if base >= a:jdn | return -1 | endif
+  if a:rep_n <= 0  | return base | endif
+
+  " Fixed-length units: pure arithmetic
+  if a:rep_unit ==# 'd' || a:rep_unit ==# 'w'
+    let step = a:rep_unit ==# 'w' ? a:rep_n * 7 : a:rep_n
+    if step <= 0 | return base | endif
+    return base + ((a:jdn - base - 1) / step) * step
+  endif
+
+  " Calendar units: walk back from the estimated index
+  let b = org#core#jdn_to_ymd(base)
+  let c = org#core#jdn_to_ymd(a:jdn)
+  if a:rep_unit ==# 'm'
+    let i = ((c[0] - b[0]) * 12 + (c[1] - b[1])) / a:rep_n
+  elseif a:rep_unit ==# 'y'
+    let i = (c[0] - b[0]) / a:rep_n
+  else
+    return base
+  endif
+  while i > 0
+    if a:rep_unit ==# 'm'
+      let tot  = (b[1] - 1) + i * a:rep_n
+      let cand = org#core#jdn(b[0] + tot / 12, tot % 12 + 1, b[2])
+    else
+      let cand = org#core#jdn(b[0] + i * a:rep_n, b[1], b[2])
+    endif
+    if cand < a:jdn | return cand | endif
+    let i -= 1
+  endwhile
+  return base
+endfunction
+
+" Past-due SCHEDULED items that should nag on today: not done, carrying a TODO
+" state, and with a missed occurrence behind them. Returns [[item, kind, time]].
+" Skips anything already occurring on {jdn} so it is never listed twice.
+function! s:past_scheduled(items, jdn) abort
+  let out = []
+  if !get(g:, 'org_agenda_show_past_scheduled', 1) | return out | endif
+  for it in a:items
+    if it.scheduled_epoch < 0 || it.is_done || empty(it.state) | continue | endif
+    if s:occurs_on(a:jdn, it.scheduled_epoch,
+          \ it.scheduled_repeat_n, it.scheduled_repeat_unit)
+      continue
+    endif
+    let last = s:last_occurrence(a:jdn, it.scheduled_epoch,
+          \ it.scheduled_repeat_n, it.scheduled_repeat_unit)
+    if last < 0 | continue | endif
+    call add(out, [it, printf('Sched.%dx', a:jdn - last), it.scheduled_time])
+  endfor
+  return out
+endfunction
+
 " Format an item line:  '   Kind  HH:MM  STATE  Text          file.org:N'
 function! s:item_line(kind, time, state, text, file, lnum) abort
   let tm    = empty(a:time) ? '     ' : printf('%5s', a:time)
@@ -398,10 +489,9 @@ function! s:render_week(items) abort
 
   " Overdue deadlines (deadline_epoch < today midnight)
   let today_epoch = s:jdn_to_epoch(today)
-  let done_kws    = s:kw_dict().done
   let overdue = filter(copy(a:items),
         \ {_, v -> v.deadline_epoch >= 0 && v.deadline_epoch < today_epoch
-        \       && v.state !=# '' && index(done_kws, v.state) < 0
+        \       && v.state !=# '' && !v.is_done
         \       && v.deadline_repeat_n <= 0})
   if !empty(overdue)
     call s:put(' Overdue:')
@@ -414,6 +504,16 @@ function! s:render_week(items) abort
             \ it.file, it.lnum)
     endfor
     call s:sep('─')
+  endif
+
+  " Items that will nag on today: their earlier missed occurrences inside this
+  " same week are suppressed below, so an overdue repeat is listed once, not
+  " twice. Browsing to another week still shows those occurrences normally.
+  let nag_keys = {}
+  if today >= mon && today <= sun
+    for [nit, nkind, ntime] in s:past_scheduled(a:items, today)
+      let nag_keys[nit.file . ':' . nit.lnum] = 1
+    endfor
   endif
 
   " Day-by-day
@@ -436,6 +536,8 @@ function! s:render_week(items) abort
     let day_items = []
     for it in a:items
       if s:occurs_on(jdn, it.scheduled_epoch, it.scheduled_repeat_n, it.scheduled_repeat_unit)
+        " Suppressed: this missed occurrence is folded into today's nag line
+        if jdn < today && has_key(nag_keys, it.file . ':' . it.lnum) | continue | endif
         let lbl = s:stale_label(jdn, it.scheduled_epoch, it.scheduled_repeat_n, it.scheduled_time)
         call add(day_items, [it, 'Scheduled', lbl])
       elseif s:occurs_on(jdn, it.deadline_epoch, it.deadline_repeat_n, it.deadline_repeat_unit)
@@ -443,6 +545,11 @@ function! s:render_week(items) abort
         call add(day_items, [it, 'Deadline', lbl])
       endif
     endfor
+
+    " Missed SCHEDULED occurrences keep nagging on today until marked done
+    if jdn == today
+      call extend(day_items, s:past_scheduled(a:items, jdn))
+    endif
 
     if empty(day_items)
       call s:put('   (nothing scheduled)')
@@ -577,16 +684,17 @@ function! s:render_day(items) abort
     endfor
   endfor
 
-  " Also collect overdue deadlines (deadline < today, no done state)
-  let done_kws = s:kw_dict().done
+  " Also collect overdue deadlines (deadline < today, no done state) and
+  " missed SCHEDULED occurrences, which nag on today until marked done.
   if jdn == today
     for it in a:items
       if it.deadline_epoch < 0 | continue | endif
-      if !empty(it.state) && index(done_kws, it.state) >= 0 | continue | endif
+      if it.is_done | continue | endif
       if it.deadline_epoch < day_lo && it.deadline_repeat_n <= 0
         call add(allday, [it, 'Overdue', ''])
       endif
     endfor
+    call extend(allday, s:past_scheduled(a:items, jdn))
   endif
 
   " All-day section
@@ -636,9 +744,18 @@ function! s:render_todo(items) abort
   call s:hint()
   call s:sep('─')
 
+  " Section order: the global active keywords first, then any file-local
+  " active state (REPEAT, MISSED ...) that a scanned file declared itself.
+  let states = copy(kw.active)
+  for it in a:items
+    if !empty(it.state) && !it.is_done && index(states, it.state) < 0
+      call add(states, it.state)
+    endif
+  endfor
+
   let found = 0
-  for state in kw.active
-    let grp = filter(copy(a:items), {_, v -> v.state ==# state})
+  for state in states
+    let grp = filter(copy(a:items), {_, v -> v.state ==# state && !v.is_done})
     if empty(grp) | continue | endif
     " Sort by priority: [#A]=1, [#B]=2, [#C]=3, none=4
     call sort(grp, {a, b ->
@@ -677,7 +794,6 @@ function! s:render_deadlines(items) abort
   let today    = s:today_jdn()
   let today_ep = s:jdn_to_epoch(today)
   let limit_ep = today_ep + horizon * 86400
-  let done_kws = s:kw_dict().done
 
   " Separate overdue vs upcoming
   let overdue  = []
@@ -685,7 +801,7 @@ function! s:render_deadlines(items) abort
 
   for it in a:items
     if it.deadline_epoch < 0 | continue | endif
-    if !empty(it.state) && index(done_kws, it.state) >= 0 | continue | endif
+    if it.is_done | continue | endif
     let dl_jdn = s:epoch_to_jdn(it.deadline_epoch)
     if dl_jdn < today
       call add(overdue, it)

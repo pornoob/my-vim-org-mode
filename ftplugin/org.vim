@@ -38,6 +38,8 @@ execute 'nnoremap <buffer> <silent> ' . s:l . 'ci :OrgClockIn<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'co :OrgClockOut<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'cc :OrgClockToggle<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'cr :OrgClockReport<CR>'
+" ── Generic context update (Emacs org-mode's C-c C-c) ────────────────────────
+nnoremap <buffer> <silent> <C-c><C-c> :OrgCtrlC<CR>
 
 " ── Schedule / Deadline ──────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . 's  :OrgSchedule<CR>'
