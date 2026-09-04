@@ -48,7 +48,10 @@ function! org#config#reload() abort
       return
     endif
     if exists('b:undo_ftplugin')
-      try | execute b:undo_ftplugin | catch | endtry
+      try
+        execute b:undo_ftplugin
+      catch
+      endtry
       unlet b:undo_ftplugin
     endif
     unlet! b:did_ftplugin

@@ -142,15 +142,27 @@ endfunction
 
 function! org#fold#clear_hl() abort
   for id in get(b:, 'org_fold_matches', [])
-    try | call matchdelete(id) | catch | endtry
+    try
+      call matchdelete(id)
+    catch /^Vim\%((\a\+)\)\=:E80[35]:/
+      " Stale ID: the match is already gone, or belongs to another window
+    endtry
   endfor
   unlet! b:org_fold_matches
   for id in get(w:, 'org_fold_matches', [])
-    try | call matchdelete(id) | catch | endtry
+    try
+      call matchdelete(id)
+    catch /^Vim\%((\a\+)\)\=:E80[35]:/
+      " Stale ID: the match is already gone, or belongs to another window
+    endtry
   endfor
   let w:org_fold_matches = []
   for id in get(w:, 'org_block_matches', [])
-    try | call matchdelete(id) | catch | endtry
+    try
+      call matchdelete(id)
+    catch /^Vim\%((\a\+)\)\=:E80[35]:/
+      " Stale ID: the match is already gone, or belongs to another window
+    endtry
   endfor
   let w:org_block_matches = []
   if exists('*prop_remove')
