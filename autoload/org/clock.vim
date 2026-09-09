@@ -74,7 +74,7 @@ function! s:clock_out_at(clock_lnum) abort
 
   " Re-use the exact start-timestamp string from the stored line to avoid
   " any re-formatting artifacts (e.g. daylight-saving rounding).
-  let ts_in = matchstr(l, '\[.\{-}\]')
+  let ts_in = org#core#fix_dow(matchstr(l, '\[.\{-}\]'))
   if empty(ts_in)
     echohl WarningMsg
     echo 'org: no timestamp found on clock line ' . a:clock_lnum
@@ -127,6 +127,9 @@ function! s:recalc_closed_at(lnum) abort
     return 0
   endif
   let [indent, ts_in, ts_out] = parts[1:3]
+  " A hand-edited date leaves a stale day name behind; re-derive both
+  let ts_in  = org#core#fix_dow(ts_in)
+  let ts_out = org#core#fix_dow(ts_out)
 
   let start_epoch = s:parse_bracket_ts(ts_in)
   let end_epoch   = s:parse_bracket_ts(ts_out)

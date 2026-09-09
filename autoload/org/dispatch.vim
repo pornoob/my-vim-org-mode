@@ -48,5 +48,18 @@ function! org#dispatch#ctrl_c() abort
     return
   endif
 
+  " Any other line carrying a timestamp: re-derive its day name, which goes
+  " stale as soon as the date is edited by hand (SCHEDULED/DEADLINE, etc.)
+  if l =~# '[[<]\d\{4}-\d\{2}-\d\{2}'
+    let fixed = org#core#fix_dow(l)
+    if fixed !=# l
+      call setline(lnum, fixed)
+      echo 'org: day name updated'
+    else
+      echo 'org: timestamp already correct'
+    endif
+    return
+  endif
+
   echo 'org: nothing to update here'
 endfunction

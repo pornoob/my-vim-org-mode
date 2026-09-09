@@ -116,6 +116,66 @@ function! org#core#days_in_month(y, m) abort
   return (a:m == 4 || a:m == 6 || a:m == 9 || a:m == 11) ? 30 : 31
 endfunction
 
+" Resolve g:org_agenda_files into a list of .org files.
+" Entries are expanded first: isdirectory() and filereadable() do NOT expand
+" '~' or $VARs, so a '~/org' entry would otherwise match neither branch and be
+" skipped silently. Falls back to the current buffer when nothing is configured.
+function! org#core#agenda_files() abort
+  let entries = get(g:, 'org_agenda_files', [])
+  if empty(entries)
+    let cur = expand('%:p')
+    return (filereadable(cur) && &filetype ==# 'org') ? [cur] : []
+  endif
+
+  let files = []
+  for raw_entry in entries
+    let entry = expand(raw_entry)
+    " Try native path then forward-slash variant (Windows compat)
+    let fwd = substitute(entry, '\\', '/', 'g')
+    if isdirectory(entry) || isdirectory(fwd)
+      " Strip trailing separator, then glob recursively
+      let base = substitute(fwd, '[/\\]$', '', '')
+      " Collect top-level and nested .org files (deduplicated)
+      let raw = glob(base . '/*.org', 0, 1) + glob(base . '/**/*.org', 0, 1)
+      let seen = {}
+      for rf in raw
+        if !has_key(seen, rf) | let seen[rf] = 1 | call add(files, rf) | endif
+      endfor
+      unlet seen
+    elseif filereadable(entry) || filereadable(fwd)
+      call add(files, entry)
+    endif
+  endfor
+  return files
+endfunction
+
+" Locale day-name abbreviation for a calendar date, matching what
+" format_ts()'s strftime('%a') would emit (es_CL: lun mar mié jue vie sáb dom).
+" Anchored at local noon and stepped in whole days, so neither the timezone
+" offset nor a DST shift can push the result onto the wrong calendar day.
+function! org#core#dow(y, m, d) abort
+  let now  = localtime()
+  let noon = now - (strftime('%H', now) * 3600
+        \           + strftime('%M', now) * 60
+        \           + strftime('%S', now)) + 43200
+  let delta = org#core#jdn(a:y, a:m, a:d)
+        \   - org#core#jdn(strftime('%Y', now) + 0,
+        \                 strftime('%m', now) + 0,
+        \                 strftime('%d', now) + 0)
+  return strftime('%a', noon + delta * 86400)
+endfunction
+
+" Rewrite every timestamp's day name in {line} so it agrees with its date.
+" Only a genuine day-name token is touched: one that is not a time (12:00),
+" a repeater (+1d, ++1w, .+2m) or a delay (-1d), and a timestamp written
+" without a day name at all is left exactly as it is.
+function! org#core#fix_dow(line) abort
+  return substitute(a:line,
+        \ '[[<]\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)\s\+\zs[^]> \t0-9+.-][^]> \t]*',
+        \ '\=org#core#dow(submatch(1) + 0, submatch(2) + 0, submatch(3) + 0)',
+        \ 'g')
+endfunction
+
 function! org#core#format_ts(time, active) abort
   let fmt = a:active ? '<%Y-%m-%d %a %H:%M>' : '[%Y-%m-%d %a %H:%M]'
   return strftime(fmt, a:time)

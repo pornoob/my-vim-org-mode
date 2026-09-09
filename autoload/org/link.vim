@@ -88,7 +88,7 @@ endfunction
 
 function! s:open_id(url) abort
   let uuid = substitute(a:url, '^id:', '', '')
-  let found = s:find_id_in_files(uuid, s:get_agenda_files())
+  let found = s:find_id_in_files(uuid, org#core#agenda_files())
   if empty(found)
     echohl WarningMsg | echo 'No headline found with ID: ' . uuid | echohl None
     return
@@ -134,27 +134,3 @@ function! s:find_headline_before(lines, lnum) abort
   return 0
 endfunction
 
-function! s:get_agenda_files() abort
-  let entries = get(g:, 'org_agenda_files', [])
-  if empty(entries)
-    let cur = expand('%:p')
-    return (filereadable(cur) && &filetype ==# 'org') ? [cur] : []
-  endif
-
-  let files = []
-  for entry in entries
-    let fwd = substitute(entry, '\\', '/', 'g')
-    if isdirectory(entry) || isdirectory(fwd)
-      let base = substitute(fwd, '[/\\]$', '', '')
-      let raw = glob(base . '/*.org', 0, 1) + glob(base . '/**/*.org', 0, 1)
-      let seen = {}
-      for rf in raw
-        if !has_key(seen, rf) | let seen[rf] = 1 | call add(files, rf) | endif
-      endfor
-      unlet seen
-    elseif filereadable(entry) || filereadable(fwd)
-      call add(files, entry)
-    endif
-  endfor
-  return files
-endfunction

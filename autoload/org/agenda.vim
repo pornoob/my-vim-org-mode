@@ -98,36 +98,6 @@ endfunction
 
 " ── File scanning ─────────────────────────────────────────────────────────────
 
-function! s:get_files() abort
-  let entries = get(g:, 'org_agenda_files', [])
-  if empty(entries)
-    let cur = expand('%:p')
-    return (filereadable(cur) && &filetype ==# 'org') ? [cur] : []
-  endif
-
-  let files = []
-  for raw_entry in entries
-    " Expand ~, $VARs and wildcards first: isdirectory() and filereadable()
-    " do NOT perform this expansion, so a '~/org' entry would be skipped.
-    let entry = expand(raw_entry)
-    " Try native path then forward-slash variant (Windows compat)
-    let fwd = substitute(entry, '\\', '/', 'g')
-    if isdirectory(entry) || isdirectory(fwd)
-      " Strip trailing separator, then glob recursively
-      let base = substitute(fwd, '[/\\]$', '', '')
-      " Collect top-level and nested .org files (deduplicated)
-      let raw = glob(base . '/*.org', 0, 1) + glob(base . '/**/*.org', 0, 1)
-      let seen = {}
-      for rf in raw
-        if !has_key(seen, rf) | let seen[rf] = 1 | call add(files, rf) | endif
-      endfor
-      unlet seen
-    elseif filereadable(entry) || filereadable(fwd)
-      call add(files, entry)
-    endif
-  endfor
-  return files
-endfunction
 
 " Read keywords from g:org_todo_keywords directly — never from buffer content,
 " so agenda scanning is not affected by whichever buffer happens to be current.
@@ -176,7 +146,7 @@ endfunction
 function! s:scan_files() abort
   let kw    = s:kw_dict()
   let items = []
-  for f in s:get_files()
+  for f in org#core#agenda_files()
     call extend(items, s:scan_file(f, kw))
   endfor
   return items
@@ -738,7 +708,7 @@ endfunction
 
 function! s:render_todo(items) abort
   let kw     = s:kw_dict()
-  let files  = s:get_files()
+  let files  = org#core#agenda_files()
   call s:put(' Org Agenda — All TODOs (' . len(files) . ' file' .
         \ (len(files) == 1 ? '' : 's') . ')')
   call s:hint()

@@ -50,7 +50,7 @@ let s:known_tags_cache = []
 let s:known_tags_mtime = 0
 
 function! s:collect_known_tags() abort
-  let files = s:get_agenda_files()
+  let files = org#core#agenda_files()
   let cache_key = join(files, "\n")
   let mtime = 0
   for f in files
@@ -81,27 +81,3 @@ function! s:collect_known_tags() abort
   return s:known_tags_cache
 endfunction
 
-function! s:get_agenda_files() abort
-  let entries = get(g:, 'org_agenda_files', [])
-  if empty(entries)
-    let cur = expand('%:p')
-    return (filereadable(cur) && &filetype ==# 'org') ? [cur] : []
-  endif
-
-  let files = []
-  for entry in entries
-    let fwd = substitute(entry, '\\', '/', 'g')
-    if isdirectory(entry) || isdirectory(fwd)
-      let base = substitute(fwd, '[/\\]$', '', '')
-      let raw = glob(base . '/*.org', 0, 1) + glob(base . '/**/*.org', 0, 1)
-      let seen = {}
-      for rf in raw
-        if !has_key(seen, rf) | let seen[rf] = 1 | call add(files, rf) | endif
-      endfor
-      unlet seen
-    elseif filereadable(entry) || filereadable(fwd)
-      call add(files, entry)
-    endif
-  endfor
-  return files
-endfunction
