@@ -16,11 +16,15 @@ function! org#core#file_keywords() abort
       if tok ==# '|'
         let in_done = 1
       else
-        " Parse optional shortcut: TODO(t) → kw='TODO', key='t'
-        let km = matchlist(tok, '^\([^(]\+\)(\(.\))$')
+        " Parse optional shortcut + logging spec: TODO(t), DONE(d@/!),
+        " WAIT(@/!) → kw, and key when the spec starts with one
+        let km = matchlist(tok, '^\([^(]\+\)(\([^)]*\))$')
         if !empty(km)
           let kw  = km[1]
-          let shortcuts[km[2]] = kw
+          let key = matchstr(km[2], '^[^@!/]')
+          if !empty(key)
+            let shortcuts[key] = kw
+          endif
         else
           let kw = tok
         endif
