@@ -337,6 +337,7 @@ let g:org_agenda_day_end        = 22  " latest hour in Day view
 | `j` / `k` | Move focused day down/up by one week (Month view) |
 | `Enter` | Open source file at the item's line |
 | `o` | Preview source in other window (stay in agenda) |
+| `{leader}t` / `{leader}T` | Cycle the item's TODO state forward / backward (saves the file and refreshes) |
 | `r` / `g` | Refresh (re-scan all files) |
 | `q` | Close agenda |
 

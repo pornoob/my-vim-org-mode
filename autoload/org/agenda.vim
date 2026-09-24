@@ -291,6 +291,12 @@ function! s:setup_maps() abort
   nnoremap <buffer> <silent> T      :call org#agenda#set_view('todo')<CR>
   nnoremap <buffer> <silent> D      :call org#agenda#set_view('deadlines')<CR>
 
+  " TODO cycling on the source headline — same leader as ftplugin/org.vim
+  let l = exists('g:org_leader') ? g:org_leader
+        \ : exists('g:maplocalleader') ? g:maplocalleader : '\'
+  execute 'nnoremap <buffer> <silent> ' . l . 't :call org#agenda#todo(1)<CR>'
+  execute 'nnoremap <buffer> <silent> ' . l . 'T :call org#agenda#todo(-1)<CR>'
+
   " In month view j/k move the focused day; elsewhere scroll normally
   nnoremap <buffer> <silent> j :call org#agenda#cursor_down()<CR>
   nnoremap <buffer> <silent> k :call org#agenda#cursor_up()<CR>
@@ -942,6 +948,46 @@ function! org#agenda#jump() abort
   execute 'edit ' . fnameescape(target.file)
   call cursor(target.lnum, 1)
   normal! zv
+endfunction
+
+" Change the TODO state of the item under the cursor in its source file,
+" save it, and redraw. dir=1 forward (or shortcut prompt), dir=-1 backward.
+function! org#agenda#todo(dir) abort
+  let lnum = line('.')
+  if !has_key(s:ag.link_map, lnum)
+    echo 'org: no item on this line'
+    return
+  endif
+  let target  = s:ag.link_map[lnum]
+  let ag_win  = win_getid()
+
+  " Work in the previous window, then put its buffer and view back
+  " (or in a temporary split when the agenda is the only window)
+  wincmd p
+  let tmp_split = win_getid() == ag_win
+  if tmp_split
+    belowright split
+  endif
+  let prev_buf  = bufnr('%')
+  let prev_view = winsaveview()
+  execute 'keepalt hide edit ' . fnameescape(target.file)
+  call cursor(target.lnum, 1)
+  if a:dir > 0
+    call org#todo#cycle()
+  else
+    call org#todo#cycle_back()
+  endif
+  silent update
+  if tmp_split
+    close
+  elseif bufnr('%') != prev_buf
+    execute 'keepalt hide buffer ' . prev_buf
+    call winrestview(prev_view)
+  endif
+
+  call win_gotoid(ag_win)
+  call org#agenda#refresh()
+  call cursor(min([lnum, line('$')]), 1)
 endfunction
 
 function! org#agenda#preview() abort
