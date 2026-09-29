@@ -1,0 +1,120 @@
+" Folding: fold levels from org#fold#expr, fold text and the fold commands.
+
+Execute (helper):
+  " Fold level of every line of the current buffer.
+  function! Levels() abort
+    return map(range(1, line('$')), 'foldlevel(v:val)')
+  endfunction
+
+Given org (headlines nest by level; body follows its headline):
+  intro
+  * A
+  text
+  ** A1
+  text
+  * B
+
+Execute:
+  AssertEqual [0, 1, 1, 2, 2, 1], Levels()
+
+Given org (a line starting with *bold* is not a headline):
+  * A
+  *bold* start of a paragraph
+  **also bold**
+  text
+
+Execute:
+  AssertEqual [1, 1, 1, 1], Levels()
+
+Given org (a drawer or block folds one level below its headline):
+  * A
+  :PROPERTIES:
+  :ID:       x
+  :END:
+  body
+  #+BEGIN_SRC sh
+  echo hi
+  #+END_SRC
+  after
+
+Execute:
+  AssertEqual [1, 2, 2, 2, 1, 2, 2, 2, 1], Levels()
+
+Given org (PROPERTIES right after LOGBOOK: two sibling folds, no drift):
+  * A
+  :LOGBOOK:
+  - State "DONE"       from "TODO"       [2026-01-01 jue 10:00]
+  :END:
+  :PROPERTIES:
+  :LAST_REPEAT: [2026-01-01 jue 10:00]
+  :END:
+  #+BEGIN_QUOTE
+  q
+  #+END_QUOTE
+  body
+  ** B
+  x
+
+Execute:
+  AssertEqual [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2, 2], Levels()
+  " Closing the LOGBOOK fold hides only the drawer
+  2
+  normal! zc
+  AssertEqual [2, 4], [foldclosed(2), foldclosedend(2)]
+  AssertEqual -1, foldclosed(5)
+  AssertEqual -1, foldclosed(11)
+
+Given org (fold text shows state, priority and the line count):
+  #+SEQ_TODO: TODO WAIT | DONE
+  ** WAIT [#A] Call the bank :tag:
+  body
+  more
+
+Execute:
+  2
+  normal! zc
+  let v:foldstart = 2
+  let v:foldend = 4
+  AssertEqual '** WAIT [#A] Call the bank :tag:  (2L)', org#fold#text()
+
+Given org (Tab toggles a headline fold; on a body line it indents):
+  * A
+  text
+
+Execute:
+  call org#fold#tab()
+  AssertEqual 1, foldclosed(1)
+  call org#fold#tab()
+  AssertEqual -1, foldclosed(1)
+  2
+  call org#fold#tab()
+  AssertEqual &shiftwidth, indent(2)
+
+Given org (toggle_all: everything closed, then everything open):
+  * A
+  a
+  * B
+  b
+
+Execute:
+  call org#fold#toggle_all()
+  AssertEqual [1, 3], [foldclosed(1), foldclosed(3)]
+  call org#fold#toggle_all()
+  AssertEqual [-1, -1], [foldclosed(1), foldclosed(3)]
+
+Given org (S-Tab cycles OVERVIEW, CONTENTS, SHOW ALL):
+  * A
+  :PROPERTIES:
+  :ID:       x
+  :END:
+  ** A1
+  text
+
+Execute:
+  unlet! b:org_cycle
+  call org#fold#shifttab()
+  AssertEqual 1, foldclosed(1)
+  call org#fold#shifttab()
+  AssertEqual [-1, 2, -1], [foldclosed(1), foldclosed(2), foldclosed(5)]
+  call org#fold#shifttab()
+  AssertEqual [-1, -1], [foldclosed(2), foldclosed(6)]

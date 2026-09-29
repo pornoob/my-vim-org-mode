@@ -1,41 +1,49 @@
 " ── Fold expression ─────────────────────────────────────────────────────────
-" Headlines         → '>N'
-" #+BEGIN_* / :X:   → 'a1'  (open relative fold; nests inside any headline)
-" #+END_* / :END:   → '='   (closing line stays inside the fold)
-" line after close  → 's1'  (subtract 1; fold ends after the close line)
-" everything else   → '='
+" Absolute levels, computed for the whole buffer in one pass and cached per
+" b:changedtick:
+"   headline ('*'s then a space)          → '>N'  (N = number of stars)
+"   its body                              → N
+"   #+BEGIN_* / :PROPERTIES: / :LOGBOOK:  → '>N+1', through its closing
+"   #+END_* / :END: line, then back to N
+" Absolute levels matter: a drawer that opens right after another one closes
+" (:LOGBOOK: then :PROPERTIES:) starts a sibling fold instead of nesting.
 
 function! org#fold#expr(lnum) abort
-  let line = getline(a:lnum)
+  if get(b:, 'org_fold_tick', -1) != b:changedtick
+    let b:org_fold_levels = s:levels()
+    let b:org_fold_tick   = b:changedtick
+  endif
+  return get(b:org_fold_levels, a:lnum - 1, '=')
+endfunction
 
-  let stars = matchstr(line, '^\*\+')
-  if !empty(stars)
-    return '>' . len(stars)
-  endif
-
-  " Block / drawer open
-  if line =~? '^#+BEGIN_\w\+'
-    return 'a1'
-  endif
-  if line =~? '^\s*:\%(PROPERTIES\|LOGBOOK\):$'
-    return 'a1'
-  endif
-
-  " Block / drawer close (close line stays inside the fold)
-  if line =~? '^#+END_\w\+'
-    return '='
-  endif
-  if line =~? '^\s*:END:$'
-    return '='
-  endif
-
-  " Line immediately after any close: subtract 1 so the fold ends there
-  let l:prev = getline(a:lnum - 1)
-  if l:prev =~? '^#+END_\w\+\|^\s*:END:$'
-    return 's1'
-  endif
-
-  return '='
+function! s:levels() abort
+  let levels = []
+  let hlevel = 0
+  let inside = ''      " '' | 'block' | 'drawer'
+  for line in getline(1, '$')
+    let stars = matchstr(line, '^\*\+\ze\s')
+    if !empty(stars)
+      let hlevel = len(stars)
+      let inside = ''
+      call add(levels, '>' . hlevel)
+    elseif inside ==# '' && line =~? '^#+BEGIN_\w\+'
+      let inside = 'block'
+      call add(levels, '>' . (hlevel + 1))
+    elseif inside ==# '' && line =~? '^\s*:\%(PROPERTIES\|LOGBOOK\):\s*$'
+      let inside = 'drawer'
+      call add(levels, '>' . (hlevel + 1))
+    elseif inside !=# ''
+      " The closing line still belongs to the fold
+      if (inside ==# 'block' && line =~? '^#+END_\w\+')
+            \ || (inside ==# 'drawer' && line =~? '^\s*:END:\s*$')
+        let inside = ''
+      endif
+      call add(levels, hlevel + 1)
+    else
+      call add(levels, hlevel)
+    endif
+  endfor
+  return levels
 endfunction
 
 " ── Keyword helpers ──────────────────────────────────────────────────────────
@@ -74,11 +82,11 @@ endfunction
 " ── Fold text ─────────────────────────────────────────────────────────────────
 function! org#fold#text() abort
   let line  = getline(v:foldstart)
-  let count = v:foldend - v:foldstart
+  let nlines = v:foldend - v:foldstart
 
   " Block / drawer fold: show the opening line verbatim with line count
   if line =~? '^#+BEGIN_\w\+\|^\s*:\%(PROPERTIES\|LOGBOOK\):$'
-    return line . '  (' . count . 'L)'
+    return line . '  (' . nlines . 'L)'
   endif
 
   " Headline fold
@@ -102,7 +110,7 @@ function! org#fold#text() abort
   endif
 
   let prefix = (state !=# '' ? state . ' ' : '') . (prio !=# '' ? prio . ' ' : '')
-  return repeat('*', level) . ' ' . prefix . text . '  (' . count . 'L)'
+  return repeat('*', level) . ' ' . prefix . text . '  (' . nlines . 'L)'
 endfunction
 
 " ── Fold text highlights ──────────────────────────────────────────────────────
@@ -175,7 +183,7 @@ endfunction
 " Tab on a headline, block, or drawer open line cycles the fold; elsewhere indents.
 function! org#fold#tab() abort
   let line = getline('.')
-  if line =~# '^\*' || line =~? '^#+BEGIN_\w\+\|^\s*:\%(PROPERTIES\|LOGBOOK\):$'
+  if line =~# '^\*\+\s' || line =~? '^#+BEGIN_\w\+\|^\s*:\%(PROPERTIES\|LOGBOOK\):$'
     if foldclosed('.') >= 0
       normal! zo
     else
@@ -225,7 +233,7 @@ endfunction
 function! org#fold#toggle_all() abort
   let any_closed = 0
   for lnum in range(1, line('$'))
-    if getline(lnum) =~# '^\*' && foldclosed(lnum) >= 0
+    if getline(lnum) =~# '^\*\+\s' && foldclosed(lnum) >= 0
       let any_closed = 1
       break
     endif
@@ -254,7 +262,7 @@ function! org#fold#shifttab() abort
     normal! zM
     let pos = getcurpos()
     for lnum in range(1, line('$'))
-      if getline(lnum) =~# '^\*' && foldlevel(lnum) > 0
+      if getline(lnum) =~# '^\*\+\s' && foldlevel(lnum) > 0
         execute lnum . 'foldopen'
       endif
     endfor
