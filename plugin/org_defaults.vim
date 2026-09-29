@@ -23,7 +23,7 @@ if !exists('g:org_todo_keyword_faces')
 endif
 
 " Agenda: list of .org file paths OR directory paths to scan.
-" A directory entry expands to all *.org files directly inside it.
+" A directory entry expands to all *.org files inside it, recursively.
 " Empty list (default) → falls back to the current buffer when it is an org file.
 " Example: let g:org_agenda_files = ['E:\org']
 if !exists('g:org_agenda_files')

@@ -17,9 +17,12 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Sequential cycling](#sequential-cycling)
   - [Shortcut-key picker](#shortcut-key-picker)
   - [File-local keywords](#file-local-keywords)
+  - [Repeating tasks on DONE](#repeating-tasks-on-done)
+- [Context Action](#context-action)
 - [Clocking](#clocking)
   - [Clock report](#clock-report)
 - [Agenda](#agenda)
+- [Capture](#capture)
 - [Scheduling and Deadlines](#scheduling-and-deadlines)
   - [Calendar picker](#calendar-picker)
   - [Specific times](#specific-times)
@@ -178,7 +181,8 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}:` | Normal | Edit tags on current headline |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
 | `{leader}$` | Normal | Archive subtree to `*.org_archive` |
-| `{leader}C` | Normal | **Global** — open capture template (works from any filetype) |
+| `{leader}C` | Normal | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`) |
+| `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
 | `<Tab>` | Normal | Toggle fold on headline |
 | `<S-Tab>` | Normal | Cycle global fold: OVERVIEW → CONTENTS → SHOW ALL |
@@ -228,6 +232,57 @@ for that file only:
 - Keywords without parentheses use sequential cycling.
 - The `|` separator marks the done/active boundary.
 - Matching is case-insensitive (`#+seq_todo:` works).
+- `#+TODO:` is accepted as a synonym of `#+SEQ_TODO:`.
+- Emacs logging specs are parsed and tolerated: `DONE(d@/!)` keeps `d` as the
+  shortcut, `WAIT(@/!)` has no shortcut. The `@` / `!` markers themselves are
+  ignored for now — no state-change note is written.
+
+### Repeating tasks on DONE
+
+When a headline whose `SCHEDULED` or `DEADLINE` carries a repeater is moved to a
+**done** state, the plugin does not close it. Instead it shifts the date forward
+and puts the headline back to the first active keyword — no `CLOSED:` line is added.
+
+```org
+* TODO Pay rent
+  SCHEDULED: <2026-07-01 Wed +1m>
+```
+
+After `{leader}t` → `DONE`:
+
+```org
+* TODO Pay rent
+  SCHEDULED: <2026-08-01 Sat +1m>
+```
+
+| Repeater | Next date |
+|---|---|
+| `+1m` | Old date + one interval (may still be in the past) |
+| `++1w` | Old date + as many intervals as needed to land after today (keeps the weekday) |
+| `.+1d` | Today + one interval |
+
+- Supported units: `d`, `w`, `m`, `y`. Month steps clamp to the month's last day
+  (`Jan 31 +1m` → `Feb 28`).
+- Only the date and day name change: the time, the repeater and a warning delay
+  (`<2026-09-20 Sun +1w -2d>`) are kept.
+- Every repeating stamp in the planning lines moves, so `DEADLINE: <…> SCHEDULED: <…>`
+  on one line are both shifted.
+
+---
+
+## Context Action
+
+`<C-c><C-c>` (or `:OrgCtrlC`) mirrors Emacs org-mode's `C-c C-c`: it looks at the
+line under the cursor and does whatever update makes sense there.
+
+| Cursor on | Action |
+|---|---|
+| Closed `CLOCK:` line (`[…]--[…]`) | Recalculate its `=>` duration |
+| Open (running) `CLOCK:` line | Clock out |
+| Checkbox list item | Toggle it and refresh parent `[n/m]` / `[%]` summaries |
+| `#+BEGIN: clocktable` block (or inside it) | Regenerate the clock report |
+| Line with a `[[link]]` | Open the link |
+| Any other line with a timestamp | Fix a stale day name (e.g. `<2026-07-09 Mon>` → `<2026-07-09 Thu>`) |
 
 ---
 
@@ -260,6 +315,13 @@ Press `{leader}co` to close the open clock. Duration is computed and appended:
 ### Toggle
 
 `{leader}cc` clocks in when no clock is running, or clocks out if one is open.
+
+### Recalculate durations
+
+After editing a `CLOCK:` line by hand, its `=>` duration goes stale:
+
+- `<C-c><C-c>` or `:OrgClockUpdate` on the line recalculates that entry.
+- `:OrgClockUpdateAll` recalculates every closed entry in the buffer.
 
 ### Clock report
 
@@ -314,6 +376,7 @@ let g:org_agenda_deadline_days  = 14  " deadline horizon (days)
 let g:org_agenda_window_height  = 20  " split height
 let g:org_agenda_day_start      = 7   " earliest hour in Day view
 let g:org_agenda_day_end        = 22  " latest hour in Day view
+let g:org_agenda_show_past_scheduled = 1  " missed SCHEDULED items nag on today (0 = off)
 ```
 
 ### Views
@@ -351,6 +414,25 @@ spot habits or recurring tasks that haven't been attended to in a while.
 
 The Month view only shows items on their base date and does not list repeated
 occurrences, keeping the calendar uncluttered.
+
+### Missed scheduled items
+
+As in Emacs org-agenda, a `SCHEDULED` item that is still in an active TODO state
+keeps showing on **today** after its date (or its latest repeat occurrence) has
+passed, labelled `Sched.Nx` — N days since the missed occurrence:
+
+```
+ Tuesday   Jul 14 ◀ today
+   Sched.3x         TODO  Weekly review               work.org:40
+```
+
+- Shown in the Week view (on today's row, when today is in the displayed week)
+  and in the Day view for today.
+- In the week containing today, the earlier missed occurrences are suppressed so
+  the item is listed once, not twice.
+- Items without a TODO keyword, or already done, never nag.
+- Turn it off with `let g:org_agenda_show_past_scheduled = 0` — a repeating task
+  is then listed only on its exact occurrence dates.
 
 ### TODO view sorting
 
@@ -390,6 +472,61 @@ group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last).
  10:00 ◀ now ──────────────────────────────────────────────────────
  11:00 ──────────────────────────────────────────────────────────────
 ```
+
+---
+
+## Capture
+
+`{leader}C` (or `:OrgCapture`) opens a scratch buffer pre-filled from a template,
+from any filetype. With one template it opens directly; with several, a one-key
+picker is shown (`q` / `Esc` cancels).
+
+### Configuration
+
+```vim
+let g:org_capture_templates = [
+  \ {'key': 't', 'desc': 'Task',
+  \  'template': "* TODO %?\n  %t",
+  \  'file': expand('~/org/inbox.org'), 'headline': 'Inbox'},
+  \ {'key': 'n', 'desc': 'Note from selection',
+  \  'template': "* %?\n  %t  from [[file:%f]]\n\n%i",
+  \  'file': expand('~/org/notes.org')},
+  \ ]
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `key` | yes | Single key in the picker |
+| `desc` | yes | Label in the picker |
+| `template` | yes | Text of the entry; use `\n` for new lines |
+| `file` | yes | Target file. `~` is **not** expanded — wrap it in `expand()` |
+| `headline` | no | Level-1 headline (`* Inbox`) to file the entry under |
+
+### Template placeholders
+
+| Placeholder | Expands to |
+|---|---|
+| `%T` | Active timestamp with time, `<2026-07-09 Wed 10:30>` |
+| `%t` | Inactive timestamp with time, `[2026-07-09 Wed 10:30]` |
+| `%f` | Full path of the buffer capture was started from |
+| `%F` | File name only of that buffer |
+| `%i` | Last visual selection (empty if none) |
+| `%?` | Cursor position after expansion (first occurrence only) |
+
+### Finishing
+
+| Key | Mode | Action |
+|---|---|---|
+| `<C-c><C-c>` | Normal / Insert | Write the entry to the target file and close |
+| `<C-c><C-k>` | Normal / Insert | Discard and close |
+
+Where the entry lands:
+
+- With `headline` and the headline exists → directly under that headline.
+- With `headline` and the file is new/empty → the file is created with that headline.
+- With `headline` but the headline is missing from an existing file → appended at the
+  end of the file (the headline is **not** created).
+- Without `headline` → appended at the end of the file.
 
 ---
 
@@ -588,7 +725,11 @@ content lines are left untouched.
 | `:OrgClockIn` | Clock in on current headline |
 | `:OrgClockOut` | Clock out (close open clock) |
 | `:OrgClockToggle` | Toggle clock in/out |
+| `:OrgClockUpdate` | Recalculate the duration of the closed `CLOCK:` entry on the current line |
+| `:OrgClockUpdateAll` | Recalculate every closed `CLOCK:` entry in the buffer |
 | `:OrgClockReport` | Insert or update clock report (`#+BEGIN: clocktable`) at cursor |
+| `:OrgCtrlC` | [Context action](#context-action) on the current line (`<C-c><C-c>`) |
+| `:OrgOpenLink` | Open link under cursor |
 | `:OrgPromote` | Promote headline subtree |
 | `:OrgDemote` | Demote headline subtree |
 | `:OrgCheckboxToggle` | Toggle checkbox on current line |
@@ -752,6 +893,7 @@ vim-org/
 │   ├── config.vim      – OrgReload implementation
 │   ├── core.vim        – shared utilities (keyword parser, JDN, logbook)
 │   ├── date.vim        – SCHEDULED / DEADLINE insertion with calendar + time
+│   ├── dispatch.vim    – <C-c><C-c> context action (:OrgCtrlC)
 │   ├── fold.vim        – foldexpr, foldtext, Tab / S-Tab handlers, block border
 │   ├── headline.vim    – promote/demote (subtree + visual range)
 │   ├── highlight.vim   – all highlight group definitions (survives colorscheme reloads)
@@ -759,7 +901,7 @@ vim-org/
 │   ├── link.vim        – link opening ([[url]], [[file:]], [[id:]])
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
 │   ├── tags.vim        – tag editing
-│   └── todo.vim        – TODO cycle logic, CLOSED timestamp insertion
+│   └── todo.vim        – TODO cycle logic, CLOSED timestamp, repeaters
 ├── config/
 │   └── user.vim        – user config template (not auto-loaded)
 ├── ftdetect/
