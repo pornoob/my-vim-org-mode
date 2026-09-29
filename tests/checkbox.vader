@@ -1,0 +1,82 @@
+" Checkbox cycling and parent [n/m] / [%] cookies.
+
+Given org (cycle [ ] → [X] → [-] → [ ], and [] counts as empty):
+  - [] item
+
+Execute:
+  call org#checkbox#toggle()
+  AssertEqual '- [X] item', getline(1)
+  call org#checkbox#toggle()
+  AssertEqual '- [-] item', getline(1)
+  call org#checkbox#toggle()
+  AssertEqual '- [ ] item', getline(1)
+
+Given org (a line without a checkbox is left alone):
+  - plain item
+
+Execute:
+  call org#checkbox#toggle()
+
+Expect org:
+  - plain item
+
+Given org (parent [n/m] counts direct items only):
+  * Groceries [0/3]
+  - [ ] milk
+  - [ ] eggs
+  1. [X] bread
+  ** Sub
+  - [ ] not counted
+
+Execute:
+  2
+  call org#checkbox#toggle()
+
+Expect org:
+  * Groceries [2/3]
+  - [X] milk
+  - [ ] eggs
+  1. [X] bread
+  ** Sub
+  - [ ] not counted
+
+Given org (percent cookie and the headline's own checkbox):
+  * [ ] Trip [0%]
+  - [X] tickets
+  - [ ] hotel
+
+Execute:
+  3
+  call org#checkbox#toggle()
+  AssertEqual '* [X] Trip [100%]', getline(1)
+  call org#checkbox#toggle()
+  AssertEqual '* [-] Trip [50%]', getline(1)
+
+Given org (child headline checkboxes roll up through two levels):
+  * Project [0/2]
+  ** [ ] Part A [0/1]
+  - [ ] step
+  ** [X] Part B
+
+Execute:
+  3
+  call org#checkbox#toggle()
+
+Expect org:
+  * Project [2/2]
+  ** [X] Part A [1/1]
+  - [X] step
+  ** [X] Part B
+
+Given org (visual toggle updates each parent once):
+  * List [0/2]
+  - [ ] a
+  - [ ] b
+
+Do:
+  jVj:\<C-u>call org#checkbox#toggle_visual()\<CR>
+
+Expect org:
+  * List [2/2]
+  - [X] a
+  - [X] b

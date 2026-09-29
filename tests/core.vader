@@ -1,0 +1,194 @@
+" org#core#*: keyword parsing, calendar arithmetic, agenda file lookup and
+" entry-header helpers.
+
+" ── Keywords ──────────────────────────────────────────────────────────────────
+
+Given org (#+SEQ_TODO with shortcuts and logging specs):
+  #+SEQ_TODO: NEXT(n) TODO(t) REPEAT(r!) | DONE(d@/!) CANCELLED(c@/!) MAYBE(m)
+  * Task
+
+Execute:
+  let kw = org#core#keywords()
+  AssertEqual ['NEXT', 'TODO', 'REPEAT'], kw.active
+  AssertEqual ['DONE', 'CANCELLED', 'MAYBE'], kw.done
+  AssertEqual {'n': 'NEXT', 't': 'TODO', 'r': 'REPEAT', 'd': 'DONE', 'c': 'CANCELLED', 'm': 'MAYBE'},
+        \ kw.shortcuts
+  Assert kw.has_shortcuts
+  AssertEqual {'REPEAT': ['!', ''], 'DONE': ['@', '!'], 'CANCELLED': ['@', '!']}, kw.log
+
+Given org (spec without a shortcut key):
+  #+TODO: TODO WAIT(@/!) | DONE(/!)
+
+Execute:
+  let kw = org#core#keywords()
+  AssertEqual ['TODO', 'WAIT', 'DONE'], kw.all
+  AssertEqual {}, kw.shortcuts
+  AssertEqual {'WAIT': ['@', '!'], 'DONE': ['', '!']}, kw.log
+
+Given org (no directive: the global flat list):
+  * Task
+
+Execute:
+  let g:org_todo_keywords = ['A', 'B', '|', 'C']
+  let kw = org#core#keywords()
+  AssertEqual [['A', 'B'], ['C'], {}], [kw.active, kw.done, kw.log]
+  let g:org_todo_keywords = [['X'], ['Y', 'Z']]
+  AssertEqual ['X', 'Y', 'Z'], org#core#keywords().all
+  let g:org_todo_keywords = ['TODO', 'NEXT', 'WAITING', '|', 'DONE', 'CANCELLED']
+
+" ── Headline lookup ───────────────────────────────────────────────────────────
+
+Given org (current_headline walks up from body text):
+  * Top
+  ** Child
+  some text
+
+Execute:
+  3
+  let hl = org#core#current_headline()
+  AssertEqual [2, 2, 'Child'], [hl.lnum, hl.level, hl.text]
+  enew!
+  AssertEqual {}, org#core#current_headline()
+
+" ── Calendar arithmetic ───────────────────────────────────────────────────────
+
+Execute (jdn round-trips and days_in_month):
+  for [y, m, d] in [[2026, 1, 1], [2024, 2, 29], [1999, 12, 31], [2100, 3, 1]]
+    AssertEqual [y, m, d], org#core#jdn_to_ymd(org#core#jdn(y, m, d))
+  endfor
+  AssertEqual 1, org#core#jdn(2026, 3, 1) - org#core#jdn(2026, 2, 28)
+  AssertEqual [29, 28, 29, 28, 30, 31],
+        \ [org#core#days_in_month(2024, 2), org#core#days_in_month(2026, 2),
+        \  org#core#days_in_month(2000, 2), org#core#days_in_month(2100, 2),
+        \  org#core#days_in_month(2026, 9), org#core#days_in_month(2026, 12)]
+
+Execute (dow matches strftime for dates across DST changes):
+  " 2026-09-06 and 2026-04-05 are Chile's DST switch days (both Sundays)
+  let sunday = org#core#dow(2026, 9, 6)
+  AssertEqual sunday, org#core#dow(2026, 4, 5)
+  AssertEqual sunday, org#core#dow(2026, 9, 13)
+  AssertNotEqual sunday, org#core#dow(2026, 9, 7)
+  AssertEqual strftime('%a'), org#core#dow(strftime('%Y') + 0, strftime('%m') + 0, strftime('%d') + 0)
+
+Execute (fix_dow rewrites only real day names):
+  let line = 'SCHEDULED: <2026-09-29 xxx 09:00 +1w -2d> CLOSED: [2026-09-28 yyy]'
+  AssertEqual 'SCHEDULED: <' . Date(2026, 9, 29) . ' 09:00 +1w -2d> CLOSED: [' . Date(2026, 9, 28) . ']',
+        \ org#core#fix_dow(line)
+  AssertEqual '<2026-09-29 +1w> <2026-09-29 10:00>', org#core#fix_dow('<2026-09-29 +1w> <2026-09-29 10:00>')
+
+Execute (format_ts active and inactive):
+  let t = localtime()
+  AssertEqual strftime('<%Y-%m-%d %a %H:%M>', t), org#core#format_ts(t, 1)
+  AssertEqual strftime('[%Y-%m-%d %a %H:%M]', t), org#core#format_ts(t, 0)
+
+" ── Agenda files ──────────────────────────────────────────────────────────────
+
+Execute (folders are searched recursively; ~ and files are expanded):
+  let dir = tempname()
+  call mkdir(dir . '/sub/deeper', 'p')
+  for f in ['a.org', 'sub/b.org', 'sub/deeper/c.org', 'notes.txt']
+    call writefile([], dir . '/' . f)
+  endfor
+  let g:org_agenda_files = [dir]
+  AssertEqual ['a.org', 'sub/b.org', 'sub/deeper/c.org'],
+        \ sort(map(org#core#agenda_files(), 'v:val[len(dir) + 1:]'))
+  let home = $HOME
+  let $HOME = dir
+  let g:org_agenda_files = ['~/sub/b.org', '~/missing.org']
+  AssertEqual [dir . '/sub/b.org'], org#core#agenda_files()
+  let $HOME = home
+  let g:org_agenda_files = []
+  call delete(dir, 'rf')
+
+Execute (no agenda files: the current org buffer, if it is a file):
+  let g:org_agenda_files = []
+  let f = tempname() . '.org'
+  call writefile(['* x'], f)
+  execute 'edit ' . f
+  AssertEqual [f], org#core#agenda_files()
+  bwipeout!
+  enew!
+  AssertEqual [], org#core#agenda_files()
+  call delete(f)
+
+" ── Entry header helpers ──────────────────────────────────────────────────────
+
+Given org (scan_header steps over drawers in any order):
+  * Task
+    SCHEDULED: <2026-07-01 mié>
+    :LOGBOOK:
+    - Note
+    :END:
+    :PROPERTIES:
+    :ID:       x
+    :END:
+  body
+
+Execute:
+  AssertEqual {'props': [6, 8], 'insert_after': 2, 'indent': '  '}, org#core#scan_header(1)
+
+Given org (scan_header stops at an unterminated drawer):
+  * Task
+  :PROPERTIES:
+  :ID: x
+  * Next
+
+Execute:
+  AssertEqual [0, 0], org#core#scan_header(1).props
+
+Given org (ensure_logbook reuses an existing drawer):
+  * Task
+    SCHEDULED: <2026-07-01 mié>
+    :LOGBOOK:
+    :END:
+
+Execute:
+  AssertEqual 3, org#core#ensure_logbook(1)
+  AssertEqual 4, line('$')
+
+Given org (ensure_logbook goes after planning and properties, same indent):
+  * Task
+  SCHEDULED: <2026-07-01 mié>
+  :PROPERTIES:
+  :ID:       x
+  :END:
+  body
+
+Execute:
+  AssertEqual 6, org#core#ensure_logbook(1)
+
+Expect org:
+  * Task
+  SCHEDULED: <2026-07-01 mié>
+  :PROPERTIES:
+  :ID:       x
+  :END:
+  :LOGBOOK:
+  :END:
+  body
+
+Given org (ensure_logbook on a bare headline uses two spaces):
+  * Task
+  body
+
+Execute:
+  call org#core#ensure_logbook(1)
+
+Expect org:
+  * Task
+    :LOGBOOK:
+    :END:
+  body
+
+Given org (log_item puts a note under the item, indented):
+  * Task
+
+Execute:
+  call org#core#log_item(1, ['Note taken on [2026-01-01 jue 10:00]', 'first line'])
+
+Expect org:
+  * Task
+    :LOGBOOK:
+    - Note taken on [2026-01-01 jue 10:00] \\
+      first line
+    :END:

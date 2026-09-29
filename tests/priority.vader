@@ -1,0 +1,34 @@
+" Priority cookies: [#A] → [#B] → [#C] → none.
+
+Given org (forward cycle, placed after the keyword):
+  * TODO Task :tag:
+
+Execute:
+  call org#priority#cycle()
+  AssertEqual '* TODO [#A] Task :tag:', getline(1)
+  call org#priority#cycle()
+  AssertEqual '* TODO [#B] Task :tag:', getline(1)
+  call org#priority#cycle()
+  call org#priority#cycle()
+  AssertEqual '* TODO Task :tag:', getline(1)
+
+Given org (backward from none goes to [#C]; works from the body):
+  ** Task
+  body
+
+Execute:
+  2
+  call org#priority#cycle_back()
+
+Expect org:
+  ** [#C] Task
+  body
+
+Given org (an unknown priority restarts the cycle):
+  * NEXT [#E] Task
+
+Execute:
+  call org#priority#cycle()
+
+Expect org:
+  * NEXT [#A] Task

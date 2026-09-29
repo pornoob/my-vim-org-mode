@@ -1,0 +1,62 @@
+" Promote / demote of subtrees and visual selections.
+
+Given org (demote moves the whole subtree, not its siblings):
+  * A
+  ** A1
+  text
+  *** A11
+  * B
+
+Execute:
+  call org#headline#demote()
+
+Expect org:
+  ** A
+  *** A1
+  text
+  **** A11
+  * B
+
+Given org (promote a subtree from inside its body):
+  * Top
+  ** Child
+  body
+  *** Grandchild
+  ** Sibling
+
+Execute:
+  3
+  call org#headline#promote()
+
+Expect org:
+  * Top
+  * Child
+  body
+  ** Grandchild
+  ** Sibling
+
+Given org (top level cannot be promoted):
+  * A
+  ** B
+
+Execute:
+  call org#headline#promote()
+
+Expect org:
+  * A
+  ** B
+
+Given org (visual shift touches only headlines, clamped at level 1):
+  * A
+  text
+  ** B
+  *** C
+
+Do:
+  Vjj:\<C-u>call org#headline#shift_visual(-1)\<CR>
+
+Expect org:
+  * A
+  text
+  * B
+  *** C

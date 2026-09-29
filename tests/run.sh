@@ -12,6 +12,11 @@ timeout 120 vim -N -u tests/vimrc -i NONE --not-a-term "+Vader! $*" </dev/null >
 status=$?
 # Keep Vader's report only: drop its :version banner and terminal codes
 sed 's/\x1b\[[0-9;?>=]*[a-zA-Z]//g; s/\x1b[=>]//g' "$log" | awk '/Starting Vader/ { p = 1 } p'
+if [ $status -eq 124 ]; then
+  echo "Timed out (a test is probably waiting for input)"
+elif ! grep -q '^Success/Total' "$log"; then
+  echo "Vim quit before Vader finished (a prompt read EOF?)"
+  status=1
+fi
 rm -f "$log"
-[ $status -eq 124 ] && echo "Timed out (a test is probably waiting for input)"
 exit $status

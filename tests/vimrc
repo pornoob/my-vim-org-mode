@@ -4,4 +4,6 @@ let s:root = fnamemodify(expand('<sfile>:p'), ':h:h')
 let &runtimepath = s:root . ',' . s:root . '/tests/.vader,' . &runtimepath
 filetype plugin indent on
 syntax on
+" Messages pile up during a run; a -- More -- prompt would read EOF and quit
+set nomore
 execute 'source ' . fnameescape(s:root . '/tests/helpers.vim')

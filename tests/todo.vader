@@ -1,0 +1,261 @@
+" TODO state cycling, the shortcut picker and repeaters on DONE.
+" Logging is covered in todo_log.vader.
+
+Before:
+  let g:org_log_repeat = ''
+  let g:org_todo_keywords = ['TODO', 'NEXT', 'WAITING', '|', 'DONE', 'CANCELLED']
+
+" ── Sequential cycling ────────────────────────────────────────────────────────
+
+Given org (forward from no state):
+  * Task
+
+Execute:
+  call org#todo#cycle()
+
+Expect org:
+  * TODO Task
+
+Given org (forward from the last state clears it):
+  * CANCELLED Task
+
+Execute:
+  call org#todo#cycle()
+
+Expect org:
+  * Task
+
+Given org (backward from no state goes to the last one, a done state):
+  ** Task :work:
+
+Execute:
+  call org#todo#cycle_back()
+
+Then:
+  AssertEqual ['** CANCELLED Task :work:', '  CLOSED: ' . Now()], getline(1, '$')
+
+Given org (priority and tags survive a cycle):
+  * NEXT [#A] Task   :work:
+
+Execute:
+  call org#todo#cycle()
+
+Expect org:
+  * WAITING [#A] Task   :work:
+
+Given org (a word that merely starts like a keyword is not one):
+  * TODOS list
+
+Execute:
+  call org#todo#cycle()
+
+Expect org:
+  * TODO TODOS list
+
+Given org (nested keyword format):
+  * TODO Task
+
+Execute:
+  let g:org_todo_keywords = [['TODO'], ['DONE']]
+  call org#todo#cycle()
+  AssertEqual '* DONE Task', getline(1)
+
+Given org (not on a headline: nothing changes):
+  * TODO Task
+  body text
+
+Execute:
+  2
+  call org#todo#cycle()
+
+Expect org:
+  * TODO Task
+  body text
+
+" ── CLOSED ────────────────────────────────────────────────────────────────────
+
+Given org (entering a done state stamps CLOSED):
+  * WAITING Task
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual ['* DONE Task', '  CLOSED: ' . Now()], getline(1, '$')
+
+Given org (an existing CLOSED is updated, not duplicated):
+  * WAITING Task
+    SCHEDULED: <2026-07-01 mié>
+    CLOSED: [2020-01-01 mié 10:00]
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual 3, line('$')
+  AssertEqual '  CLOSED: ' . Now(), getline(3)
+
+" ── Shortcut picker (#+SEQ_TODO with keys) ────────────────────────────────────
+
+Given org (a key jumps straight to its state):
+  #+SEQ_TODO: TODO(t) NEXT(n) | DONE(d) PAYED(p)
+  * TODO Rent
+
+Do:
+  j:call org#todo#cycle()\<CR>n
+
+Expect org:
+  #+SEQ_TODO: TODO(t) NEXT(n) | DONE(d) PAYED(p)
+  * NEXT Rent
+
+Given org (space clears the state):
+  #+SEQ_TODO: TODO(t) | DONE(d)
+  * TODO Rent
+
+Do:
+  j:call org#todo#cycle()\<CR>\<Space>
+
+Expect org:
+  #+SEQ_TODO: TODO(t) | DONE(d)
+  * Rent
+
+Given org (an unbound key changes nothing):
+  #+SEQ_TODO: TODO(t) | DONE(d)
+  * TODO Rent
+
+Do:
+  j:call org#todo#cycle()\<CR>z
+
+Expect org:
+  #+SEQ_TODO: TODO(t) | DONE(d)
+  * TODO Rent
+
+Given org (#+TODO: is a synonym and backward cycling skips the picker):
+  #+todo: A(a) B(b) | C(c)
+  * B Task
+
+Execute:
+  2
+  call org#todo#cycle_back()
+
+Expect org:
+  #+todo: A(a) B(b) | C(c)
+  * A Task
+
+" ── Repeaters ─────────────────────────────────────────────────────────────────
+
+Given org (+1m keeps time, repeater and warning; heading back to TODO):
+  * WAITING Pay rent
+    SCHEDULED: <2026-07-01 mié 09:00 +1m -2d>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual ['* TODO Pay rent', '  SCHEDULED: <' . Date(2026, 8, 1) . ' 09:00 +1m -2d>'],
+        \ getline(1, '$')
+
+Given org (+1m clamps to the end of the month):
+  * WAITING Report
+    DEADLINE: <2026-01-31 sáb +1m>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual '  DEADLINE: <' . Date(2026, 2, 28) . ' +1m>', getline(2)
+
+Given org (+1y on Feb 29 lands on Feb 28):
+  * WAITING Birthday
+    SCHEDULED: <2028-02-29 mar +1y>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual '  SCHEDULED: <' . Date(2029, 2, 28) . ' +1y>', getline(2)
+
+Given org (both stamps on one planning line move):
+  * WAITING Standup
+    DEADLINE: <2026-07-10 vie +1w> SCHEDULED: <2026-07-08 mié +1w>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual '  DEADLINE: <' . Date(2026, 7, 17) . ' +1w> SCHEDULED: <'
+        \ . Date(2026, 7, 15) . ' +1w>', getline(2)
+
+Given org (++1w lands on the first same weekday after today):
+  * WAITING Gym
+    SCHEDULED: <2020-01-06 lun ++1w>
+
+Execute:
+  call org#todo#cycle()
+  " 2020-01-06 was a Monday: expect the first Monday strictly after today
+  let today = org#core#jdn(strftime('%Y') + 0, strftime('%m') + 0, strftime('%d') + 0)
+  let delta = 7 - (today - org#core#jdn(2020, 1, 6)) % 7
+
+Then:
+  AssertEqual '  SCHEDULED: <' . Ymd(delta) . ' ++1w>', getline(2)
+
+Given org (.+2d counts from today):
+  * WAITING Water plants
+    SCHEDULED: <2020-01-01 mié .+2d>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual '  SCHEDULED: <' . Ymd(2) . ' .+2d>', getline(2)
+
+Given org (a stamp written without a day name gets one, as in Emacs):
+  * WAITING Backup
+    SCHEDULED: <2026-07-01 +1d>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual '  SCHEDULED: <' . Date(2026, 7, 2) . ' +1d>', getline(2)
+
+Given org (Chile DST start, 2026-09-06: +1d does not skip or repeat a day):
+  * WAITING Pill
+    SCHEDULED: <2026-09-05 sáb +1d>
+
+Execute:
+  call org#todo#cycle()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 9, 6) . ' +1d>', getline(2)
+  call setline(1, '* WAITING Pill')
+  call org#todo#cycle()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 9, 7) . ' +1d>', getline(2)
+
+Given org (Chile DST end, 2026-04-05: +1d does not skip or repeat a day):
+  * WAITING Pill
+    SCHEDULED: <2026-04-04 sáb +1d>
+
+Execute:
+  call org#todo#cycle()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 4, 5) . ' +1d>', getline(2)
+  call setline(1, '* WAITING Pill')
+  call org#todo#cycle()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 4, 6) . ' +1d>', getline(2)
+
+Given org (+1m across both DST changes keeps the day of month):
+  * WAITING Rent
+    SCHEDULED: <2026-08-06 jue +1m>
+
+Execute:
+  call org#todo#cycle()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 9, 6) . ' +1m>', getline(2)
+
+Given org (no repeater: the entry closes normally):
+  * WAITING One-off
+    SCHEDULED: <2026-07-01 mié>
+
+Execute:
+  call org#todo#cycle()
+
+Then:
+  AssertEqual ['* DONE One-off', '  CLOSED: ' . Now(), '  SCHEDULED: <2026-07-01 mié>'],
+        \ getline(1, '$')

@@ -1,0 +1,55 @@
+" <C-c><C-c> (org#dispatch#ctrl_c) picks the action for the line under the cursor.
+
+Given org (closed CLOCK line: recalculate):
+  CLOCK: [2026-07-01 mié 09:00]--[2026-07-01 mié 10:30] =>  0:00
+
+Execute:
+  call org#dispatch#ctrl_c()
+
+Expect org:
+  CLOCK: [2026-07-01 mié 09:00]--[2026-07-01 mié 10:30] =>  1:30
+
+Given org (open CLOCK line: clock out):
+  * Task
+    :LOGBOOK:
+    CLOCK: START
+    :END:
+
+Execute:
+  call setline(3, '  CLOCK: ' . Now())
+  3
+  call org#dispatch#ctrl_c()
+  AssertEqual '  CLOCK: ' . Now() . '--' . Now() . ' =>  0:00', getline(3)
+
+Given org (checkbox line: toggle and update the cookie):
+  * List [0/1]
+  - [ ] a
+
+Execute:
+  2
+  call org#dispatch#ctrl_c()
+
+Expect org:
+  * List [1/1]
+  - [X] a
+
+Given org (stale day name on a timestamp line: fix it):
+  * Task
+    SCHEDULED: <2026-09-29 xxx 10:00 +1w>
+
+Execute:
+  2
+  call org#dispatch#ctrl_c()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 9, 29) . ' 10:00 +1w>', getline(2)
+
+Given org (nothing to do: the buffer is unchanged):
+  * Task
+  plain text
+
+Execute:
+  2
+  call org#dispatch#ctrl_c()
+
+Expect org:
+  * Task
+  plain text
