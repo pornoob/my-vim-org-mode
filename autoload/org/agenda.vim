@@ -27,12 +27,12 @@ function! s:today_jdn() abort
   return org#core#jdn(strftime('%Y', now)+0, strftime('%m', now)+0, strftime('%d', now)+0)
 endfunction
 
-" Unix epoch for midnight of a date given as JDN
+" Day-number epochs: midnight of a date as seconds since 1970-01-01, counted
+" in whole days. They are only compared with each other, so they need no
+" time zone, and a pure mapping cannot shift a date across a DST change or
+" (east of UTC) onto the previous day the way real epochs did.
 function! s:jdn_to_epoch(jdn) abort
-  let now     = localtime()
-  let now_jdn = org#core#jdn(strftime('%Y',now)+0, strftime('%m',now)+0, strftime('%d',now)+0)
-  let midnight = now - strftime('%H',now)*3600 - strftime('%M',now)*60 - strftime('%S',now)
-  return midnight + (a:jdn - now_jdn) * 86400
+  return (a:jdn - org#core#jdn(1970, 1, 1)) * 86400
 endfunction
 
 function! s:epoch_to_jdn(epoch) abort
@@ -48,6 +48,13 @@ function! s:parse_ts(inner) abort
 endfunction
 
 " Monday of the ISO week containing jdn (weekday 0=Mon … 6=Sun)
+" 'HH:MM' of a timestamp's inner text, wherever it sits: '2026-07-01 Wed 09:00
+" +1w -2d' → '09:00' (a range 09:00-10:00 gives its start); '' when untimed.
+function! s:stamp_time(inner) abort
+  let t = matchstr(a:inner, '\s\zs\d\{1,2}:\d\{2}\ze\%(-\d\{1,2}:\d\{2}\)\=\%(\s\|$\)')
+  return t ==# '' ? '' : printf('%05s', t)
+endfunction
+
 function! s:week_monday(jdn) abort
   return a:jdn - (a:jdn % 7)
 endfunction
@@ -214,7 +221,7 @@ function! s:scan_file(path, kw) abort
         let sm = matchstr(pl, 'SCHEDULED:\s*<\zs[^>]*\ze>')
         if sm !=# ''
           let item.scheduled_epoch = s:parse_ts(sm)
-          let item.scheduled_time  = matchstr(sm, '\d\{2}:\d\{2}$')
+          let item.scheduled_time  = s:stamp_time(sm)
           let rpm = matchlist(sm, '[.+]\?+\(\d\+\)\([dwmy]\)')
           if !empty(rpm)
             let item.scheduled_repeat_n    = rpm[1] + 0
@@ -224,7 +231,7 @@ function! s:scan_file(path, kw) abort
         let dm = matchstr(pl, 'DEADLINE:\s*<\zs[^>]*\ze>')
         if dm !=# ''
           let item.deadline_epoch = s:parse_ts(dm)
-          let item.deadline_time  = matchstr(dm, '\d\{2}:\d\{2}$')
+          let item.deadline_time  = s:stamp_time(dm)
           let rpm = matchlist(dm, '[.+]\?+\(\d\+\)\([dwmy]\)')
           if !empty(rpm)
             let item.deadline_repeat_n    = rpm[1] + 0
@@ -444,7 +451,7 @@ function! s:item_line(kind, time, state, text, file, lnum) abort
   let state = empty(a:state) ? '      ' : printf('%-8s', a:state)
   let ref   = s:fname(a:file) . ':' . a:lnum
   let mid   = '  ' . printf('%-10s', a:kind) . tm . '  ' . state . ' ' . a:text
-  let pad   = max([1, 72 - len(mid) - len(ref)])
+  let pad   = max([1, 72 - strdisplaywidth(mid) - strdisplaywidth(ref)])
   return mid . repeat(' ', pad) . ref
 endfunction
 
@@ -591,12 +598,12 @@ function! s:render_month(items) abort
   let day_hi = day_lo + 86399
   let found  = 0
   for it in a:items
-    if it.scheduled_epoch >= 0 && s:epoch_to_jdn(it.scheduled_epoch) == focus
+    if s:occurs_on(focus, it.scheduled_epoch, it.scheduled_repeat_n, it.scheduled_repeat_unit)
       call s:put_link(s:item_line('Scheduled', it.scheduled_time,
             \ it.state, it.text, it.file, it.lnum), it.file, it.lnum)
       let found = 1
     endif
-    if it.deadline_epoch >= 0 && s:epoch_to_jdn(it.deadline_epoch) == focus
+    if s:occurs_on(focus, it.deadline_epoch, it.deadline_repeat_n, it.deadline_repeat_unit)
       call s:put_link(s:item_line('Deadline', it.deadline_time,
             \ it.state, it.text, it.file, it.lnum), it.file, it.lnum)
       let found = 1
@@ -688,25 +695,20 @@ function! s:render_day(items) abort
   for h in range(h_start, h_end)
     let label = printf('%2d:00', h)
     if h == now_h
-      let slot_line = ' ' . label . ' ◀ now ' . repeat('─', 55)
-    elseif has_key(timed, h)
-      let first = timed[h][0]
-      let line0 = ' ' . label . '  ' .
-            \ s:item_line(first[1], printf('%02d:%02d', h, 0),
-            \             first[0].state, first[0].text,
-            \             first[0].file, first[0].lnum)
-      call s:put_link(line0, first[0].file, first[0].lnum)
-      " Additional items in the same hour
-      for [it, kind, ts] in timed[h][1:]
-        call s:put_link('        ' .
-              \ s:item_line(kind, ts, it.state, it.text, it.file, it.lnum),
-              \ it.file, it.lnum)
-      endfor
-      continue
-    else
-      let slot_line = ' ' . label . ' ' . repeat('─', 62)
+      " The now marker gets its own line so it never hides this hour's items
+      call s:put(' ' . label . ' ◀ now ' . repeat('─', 55))
     endif
-    call s:put(slot_line)
+    if has_key(timed, h)
+      let first  = 1
+      for [it, kind, ts] in sort(copy(timed[h]), {a, b -> a[2] < b[2] ? -1 : a[2] > b[2]})
+        let lead = first && h != now_h ? ' ' . label . '  ' : '        '
+        call s:put_link(lead . s:item_line(kind, ts, it.state, it.text, it.file, it.lnum),
+              \ it.file, it.lnum)
+        let first = 0
+      endfor
+    elseif h != now_h
+      call s:put(' ' . label . ' ' . repeat('─', 62))
+    endif
   endfor
 endfunction
 
@@ -762,7 +764,7 @@ endfunction
 " ── Deadlines view ────────────────────────────────────────────────────────────
 
 function! s:render_deadlines(items) abort
-  let horizon = get(g:, 'org_agenda_deadline_days', 14)
+  let horizon = s:horizon()
   call s:put(' Org Agenda — Upcoming Deadlines (' . horizon . ' days)')
   call s:hint()
   call s:sep('─')
@@ -871,7 +873,7 @@ function! org#agenda#next() abort
     let s:ag.focus_jdn = org#core#jdn(y, m, d)
     let s:ag.base_jdn  = s:ag.focus_jdn
   elseif s:ag.view ==# 'deadlines'
-    let g:org_agenda_deadline_days += 7
+    let s:ag.horizon = s:horizon() + 7
   endif
   call org#agenda#refresh()
 endfunction
@@ -890,12 +892,19 @@ function! org#agenda#prev() abort
     let s:ag.focus_jdn = org#core#jdn(y, m, d)
     let s:ag.base_jdn  = s:ag.focus_jdn
   elseif s:ag.view ==# 'deadlines'
-    let g:org_agenda_deadline_days = max([7, g:org_agenda_deadline_days - 7])
+    let s:ag.horizon = max([7, s:horizon() - 7])
   endif
   call org#agenda#refresh()
 endfunction
 
+" Deadlines view horizon in days: g:org_agenda_deadline_days, widened or
+" narrowed by n / p for this session without touching the user's setting.
+function! s:horizon() abort
+  return get(s:ag, 'horizon', get(g:, 'org_agenda_deadline_days', 14))
+endfunction
+
 function! org#agenda#today() abort
+  unlet! s:ag.horizon
   let s:ag.base_jdn  = s:week_monday(s:today_jdn())
   let s:ag.focus_jdn = s:today_jdn()
   call org#agenda#refresh()
@@ -945,7 +954,7 @@ function! org#agenda#jump() abort
   endif
   let target = s:ag.link_map[lnum]
   wincmd p
-  execute 'edit ' . fnameescape(target.file)
+  execute 'hide edit ' . fnameescape(target.file)
   call cursor(target.lnum, 1)
   normal! zv
 endfunction
@@ -998,7 +1007,7 @@ function! org#agenda#preview() abort
   let target = s:ag.link_map[lnum]
   let cur_win = winnr()
   wincmd p
-  execute 'edit ' . fnameescape(target.file)
+  execute 'hide edit ' . fnameescape(target.file)
   call cursor(target.lnum, 1)
   normal! zv
   execute cur_win . 'wincmd w'

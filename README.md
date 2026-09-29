@@ -444,9 +444,9 @@ let g:org_agenda_show_past_scheduled = 1  " missed SCHEDULED items nag on today 
 
 | Key | Action |
 |---|---|
-| `n` | Next week / next day / next month |
-| `p` | Previous week / previous day / previous month |
-| `.` | Jump back to today |
+| `n` | Next week / next day / next month; in Deadlines, widen the horizon by 7 days |
+| `p` | Previous week / previous day / previous month; in Deadlines, narrow it by 7 days |
+| `.` | Jump back to today (and reset the Deadlines horizon to `g:org_agenda_deadline_days`) |
 | `h` / `l` | Move focused day left/right by one day (Month view) |
 | `j` / `k` | Move focused day down/up by one week (Month view) |
 | `Enter` | Open source file at the item's line |
@@ -521,8 +521,12 @@ group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last).
   8:00 ──────────────────────────────────────────────────────────────
   9:00  Scheduled  09:00  NEXT  Write README          work.org:72
  10:00 ◀ now ──────────────────────────────────────────────────────
+        Scheduled  10:30  TODO  Call the bank         work.org:80
  11:00 ──────────────────────────────────────────────────────────────
 ```
+
+Each item shows its own time (`10:30`, not the slot's `10:00`), and the current
+hour's items are listed under the `◀ now` line.
 
 ---
 

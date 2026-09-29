@@ -1,0 +1,109 @@
+" Agenda views over a fixture file whose dates are relative to today.
+
+Before:
+  let g:ag_file = tempname() . '.org'
+  let g:org_agenda_files = [g:ag_file]
+  let g:org_agenda_deadline_days = 14
+  let g:org_agenda_day_start = 0
+  let g:org_agenda_day_end = 23
+  let g:org_todo_keywords = ['TODO', 'NEXT', 'WAITING', '|', 'DONE', 'CANCELLED']
+
+After:
+  for b in filter(range(1, bufnr('$')), 'bufname(v:val) ==# "[Org Agenda]" || bufname(v:val) ==# g:ag_file')
+    execute 'silent! bwipeout! ' . b
+  endfor
+  call delete(g:ag_file)
+  let g:org_agenda_files = []
+
+Execute (helpers):
+  " Write the fixture, open the agenda in {view} and return its lines.
+  function! Agenda(view, lines) abort
+    call writefile(a:lines, g:ag_file)
+    call org#agenda#open()
+    call org#agenda#today()
+    call org#agenda#set_view(a:view)
+    return getline(1, '$')
+  endfunction
+
+  " The agenda lines that mention {text}.
+  function! With(lines, text) abort
+    return filter(copy(a:lines), 'stridx(v:val, a:text) >= 0')
+  endfunction
+
+  " A future time today's hour-slot can hold (never the current hour).
+  function! LaterHour() abort
+    return (strftime('%H') + 1) % 24
+  endfunction
+
+Execute (week: scheduled today, keeps the time of a repeating stamp):
+  let lines = Agenda('week', ['* TODO Standup',
+        \ 'SCHEDULED: <' . Ymd(0) . ' 09:30 +1w>',
+        \ '* TODO Plain', 'SCHEDULED: <' . Ymd(0) . '>',
+        \ '* DONE Finished', 'SCHEDULED: <' . Ymd(0) . '>'])
+  let today = index(lines, With(lines, '◀ today')[0])
+  let rows = lines[today + 1 : today + 3]
+  Assert rows[0] =~# 'Scheduled \+09:30  TODO \+Standup', rows[0]
+  Assert rows[1] =~# 'Scheduled \+TODO \+Plain', rows[1]
+
+Execute (week: accented text keeps the file column aligned):
+  let lines = Agenda('week', ['* TODO Revisión técnica', 'SCHEDULED: <' . Ymd(0) . '>',
+        \ '* TODO Revision tecnica', 'SCHEDULED: <' . Ymd(0) . '>'])
+  let a = With(lines, 'Revisión')[0]
+  let b = With(lines, 'Revision')[0]
+  AssertEqual strdisplaywidth(b), strdisplaywidth(a)
+
+Execute (week: overdue deadline and a missed repeat nagging on today):
+  let lines = Agenda('week', ['* TODO Late', 'DEADLINE: <' . Ymd(-3) . '>',
+        \ '* TODO Pill', 'SCHEDULED: <' . Ymd(-20) . ' +1d>'])
+  Assert !empty(With(lines, 'Overdue:'))
+  Assert With(lines, 'Late')[0] =~# '3 days ago', With(lines, 'Late')[0]
+
+Execute (month: a repeating item shows on its occurrences, not only its base date):
+  let lines = Agenda('month', ['* TODO Weekly', 'SCHEDULED: <' . Ymd(-14) . ' +1w>'])
+  AssertEqual 1, len(With(lines, 'Weekly'))
+
+Execute (day: an item in the current hour is listed, with its own time):
+  let hour = strftime('%H') + 0
+  let lines = Agenda('day', ['* TODO Now thing', printf('SCHEDULED: <%s %02d:45>', Ymd(0), hour),
+        \ '* TODO Later thing', printf('SCHEDULED: <%s %02d:15>', Ymd(0), LaterHour())])
+  Assert With(lines, 'Now thing')[0] =~# printf('%02d:45', hour), With(lines, 'Now thing')[0]
+  Assert !empty(With(lines, '◀ now'))
+  if LaterHour() > hour
+    Assert With(lines, 'Later thing')[0] =~# printf('%02d:15', LaterHour()), With(lines, 'Later thing')[0]
+  endif
+
+Execute (todo view: grouped by state, sorted by priority):
+  let lines = Agenda('todo', ['* TODO b', '* TODO [#A] a', '* NEXT n', '* DONE d'])
+  let t = index(lines, ' TODO')
+  Assert t > 0
+  Assert lines[t + 1] =~# '\[#A\] a', lines[t + 1]
+  Assert lines[t + 2] =~# 'TODO \+b', lines[t + 2]
+  Assert index(lines, ' NEXT') > t
+  AssertEqual [], With(lines, ' d ')
+
+Execute (deadlines view: horizon, and n/p do not change the user's setting):
+  let lines = Agenda('deadlines', ['* TODO Soon', 'DEADLINE: <' . Ymd(3) . '>',
+        \ '* TODO Far', 'DEADLINE: <' . Ymd(30) . '>'])
+  Assert With(lines, 'Soon')[0] =~# 'in 3 days', With(lines, 'Soon')[0]
+  AssertEqual [], With(lines, 'Far')
+  call org#agenda#next()
+  call org#agenda#next()
+  call org#agenda#next()
+  Assert !empty(With(getline(1, '$'), 'Far'))
+  AssertEqual 14, g:org_agenda_deadline_days
+
+Execute (jump opens the item even when the other window has unsaved changes):
+  let lines = Agenda('todo', ['* TODO Target'])
+  wincmd p
+  enew!
+  call setline(1, 'unsaved')
+  wincmd p
+  call search('Target')
+  call org#agenda#jump()
+  AssertEqual [g:ag_file, 1], [expand('%:p'), line('.')]
+
+Execute (todo from the agenda changes the source file):
+  let lines = Agenda('todo', ['* TODO Task'])
+  call search('Task')
+  call org#agenda#todo(1)
+  AssertEqual ['* NEXT Task'], readfile(g:ag_file)
