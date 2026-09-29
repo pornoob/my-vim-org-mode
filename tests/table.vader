@@ -1,0 +1,149 @@
+" Tables: alignment (org-table-align) and field motion (TAB / S-TAB).
+
+Given org (align: widths, numbers to the right, separator expanded, short rows filled):
+  |Name|Qty|Note|
+  |-
+  | apple |  3 | red, crunchy |
+  |kiwi|12|
+  |ñandú| 1.5 |x|
+
+Execute:
+  call org#table#align()
+
+Expect org:
+  | Name  | Qty | Note         |
+  |-------+-----+--------------|
+  | apple |   3 | red, crunchy |
+  | kiwi  |  12 |              |
+  | ñandú | 1.5 | x            |
+
+Given org (an Emacs-aligned table is left unchanged: links count as their description):
+  | File     | Headline                           | Time   |
+  |----------+------------------------------------+--------|
+  |          | ALL *Total time*                   | *4:41* |
+  |----------+------------------------------------+--------|
+  | work.org | *File time*                        | *3:29* |
+  |          | *[[file:/tmp/work.org::*Reunión semanal][Reunión semanal]]*                  | *1:12* |
+  |          | *[[file:/tmp/work.org::*Plan][Plan del próximo trimestre largo]]* | *2:17* |
+
+Execute:
+  let before = getline(1, '$')
+  call org#table#align()
+  AssertEqual before, getline(1, '$')
+  Assert !&modified
+
+Given org (indented table keeps its indent; mostly-text column stays left):
+  - list item
+    |a|b|
+    |1|x|
+
+Execute:
+  2
+  call org#table#align()
+
+Expect org:
+  - list item
+    | a | b |
+    | 1 | x |
+
+Given org (align keeps the cursor in its field):
+  |a|bb|
+  |ccc|d|
+
+Execute:
+  call cursor(2, 6)
+  call org#table#align()
+  AssertEqual [2, 9], [line('.'), col('.')]
+
+" ── Field motion ──────────────────────────────────────────────────────────────
+
+Given org (TAB goes to the next field, over separators, then opens a new row):
+  | a | b |
+  |---+---|
+  | c | d |
+
+Execute:
+  call cursor(1, 3)
+  call org#table#next_field()
+  AssertEqual [1, 7], [line('.'), col('.')]
+  call org#table#next_field()
+  AssertEqual [3, 3], [line('.'), col('.')]
+  call org#table#next_field()
+  call org#table#next_field()
+  AssertEqual ['| c | d |', '|   |   |'], getline(3, 4)
+  AssertEqual [4, 3], [line('.'), col('.')]
+
+Given org (S-TAB goes back, across rows and over separators):
+  | a | b |
+  |---+---|
+  | c | d |
+
+Execute:
+  call cursor(3, 3)
+  call org#fold#shifttab()
+  AssertEqual [1, 7], [line('.'), col('.')]
+  call org#table#prev_field()
+  AssertEqual [1, 3], [line('.'), col('.')]
+  call org#table#prev_field()
+  AssertEqual [1, 3], [line('.'), col('.')]
+
+Given org (normal-mode Tab on a table moves fields instead of folding):
+  * H
+  |x|y|
+
+Execute:
+  call cursor(2, 1)
+  call org#fold#tab()
+  AssertEqual ['| x | y |', 7], [getline(2), col('.')]
+
+Given org (insert-mode Tab moves fields and keeps inserting):
+  |a|b|
+  |c|d|
+
+Do:
+  A\<Esc>0a\<Tab>X\<Tab>Y\<Esc>
+
+Expect org:
+  | a | Xb |
+  | Yc | d  |
+
+Given org (<C-c><C-c> on a table aligns it):
+  |[[https://example.com][site]]|1|
+  |longer text|22|
+
+Execute:
+  call cursor(2, 1)
+  call org#dispatch#ctrl_c()
+
+Expect org:
+  | [[https://example.com][site]]        |  1 |
+  | longer text | 22 |
+
+Given org (outside a table, insert Tab chains to a global mapping like Codeium's):
+  plain text
+  |a|b|
+
+Execute:
+  " Codeium maps: imap <script><silent><nowait><expr> <Tab> codeium#Accept()
+  function! FakeAccept() abort
+    return 'ACCEPTED'
+  endfunction
+  " Mapped after this buffer's ftplugin ran, as Codeium does on VimEnter
+  imap <silent><expr> <Tab> FakeAccept()
+
+Do:
+  A\<Tab>\<Esc>
+  jA\<Tab>\<Esc>
+
+Then:
+  iunmap <Tab>
+  AssertEqual ['plain textACCEPTED', '| a | b |', '|   |   |'], getline(1, '$')
+
+Given org (with no other mapping, insert Tab outside a table is a plain Tab):
+  text
+
+Do:
+  A\<Tab>x\<Esc>
+
+Expect org:
+  text	x

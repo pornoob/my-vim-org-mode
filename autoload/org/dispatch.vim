@@ -42,6 +42,12 @@ function! org#dispatch#ctrl_c() abort
     return
   endif
 
+  " Table line → align the table (before links: fields often hold links)
+  if org#table#at(lnum)
+    call org#table#align()
+    return
+  endif
+
   " On a link → open/follow it
   if l =~# '\[\[.\{-}\]\]'
     call org#link#open()

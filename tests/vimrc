@@ -1,5 +1,7 @@
 " Minimal vimrc for tests/run.sh: this plugin and Vader, nothing of the user's.
 set nocompatible
+" Notes are UTF-8 whatever the locale (LC_ALL=C would start Vim in latin1)
+set encoding=utf-8
 let s:root = fnamemodify(expand('<sfile>:p'), ':h:h')
 let &runtimepath = s:root . ',' . s:root . '/tests/.vader,' . &runtimepath
 filetype plugin indent on

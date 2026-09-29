@@ -31,6 +31,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Reschedule logging](#reschedule-logging)
 - [Archiving](#archiving)
 - [Links](#links)
+- [Tables](#tables)
 - [Promote and Demote](#promote-and-demote)
 - [Checkboxes](#checkboxes)
 - [Commands](#commands)
@@ -188,8 +189,9 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
-| `<Tab>` | Normal | Toggle fold on headline |
-| `<S-Tab>` | Normal | Cycle global fold: OVERVIEW → CONTENTS → SHOW ALL |
+| `<Tab>` | Normal | Toggle fold on headline; on a [table](#tables), align and go to the next field |
+| `<S-Tab>` | Normal | Cycle global fold: OVERVIEW → CONTENTS → SHOW ALL; on a table, previous field |
+| `<Tab>` / `<S-Tab>` | Insert | On a table, next / previous field; elsewhere whatever they did before (a completion plugin's accept, or a plain Tab) |
 
 ---
 
@@ -330,6 +332,7 @@ line under the cursor and does whatever update makes sense there.
 | Open (running) `CLOCK:` line | Clock out |
 | Checkbox list item | Toggle it and refresh parent `[n/m]` / `[%]` summaries |
 | `#+BEGIN: clocktable` block (or inside it) | Regenerate the clock report |
+| Table line (`\| … \|`) | [Align the table](#tables) |
 | Line with a `[[link]]` | Open the link |
 | Any other line with a timestamp | Fix a stale day name (e.g. `<2026-07-09 Mon>` → `<2026-07-09 Thu>`) |
 
@@ -737,6 +740,38 @@ Following a link from a buffer with unsaved changes keeps that buffer (hidden);
 
 ---
 
+## Tables
+
+Any line starting with `|` is a table row, and `|-` a separator. As in Emacs:
+
+| Key | Action |
+|---|---|
+| `<C-c><C-c>` | Align the table under the cursor |
+| `<Tab>` (normal or insert) | Align, then move to the next field; separator lines are skipped, and from the last field a new row is opened |
+| `<S-Tab>` (normal or insert) | Align, then move to the previous field |
+
+Alignment follows Emacs' `org-table-align`:
+
+```org
+|Name|Qty|Note|             | Name  | Qty | Note         |
+|-                      →    |-------+-----+--------------|
+| apple |  3 | red |         | apple |   3 | red          |
+|kiwi|12|                    | kiwi  |  12 |              |
+```
+
+- Columns where most non-empty fields are numbers (`12`, `-3.5`, `10%`, `4:30`) are
+  right-aligned; the rest are left-aligned.
+- A `|-` line becomes a full separator; short rows get empty fields.
+- Widths are measured as displayed: accented letters count once, and a link counts as
+  its description (`[[target][desc]]` → `desc`), exactly as Emacs measures it — so a
+  table aligned in Emacs stays byte-for-byte the same when aligned here.
+
+In insert mode `<Tab>` is mapped only for `.org` buffers and falls through to the
+previous mapping outside tables, so completion plugins that accept with `<Tab>` keep
+working.
+
+---
+
 ## Checkboxes
 
 Press `{leader}x` (or `:OrgCheckboxToggle`) on a line containing `[ ]`, `[X]`, or
@@ -1016,6 +1051,7 @@ vim-org/
 │   ├── id.vim          – :ID: property generation
 │   ├── link.vim        – link opening ([[url]], [[file:…::search]], [[id:]], [[*H]])
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
+│   ├── table.vim       – table alignment and field motion
 │   ├── tags.vim        – tag editing
 │   └── todo.vim        – TODO cycle logic, CLOSED, state logging, repeaters
 ├── config/

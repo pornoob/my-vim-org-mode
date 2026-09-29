@@ -28,6 +28,15 @@ execute 'nnoremap <buffer> <silent> ' . s:l . 'T  :call org#todo#cycle_back()<CR
 " ── Folding keys ──────────────────────────────────────────────────────────────
 nnoremap <buffer> <silent> <Tab>   :call org#fold#tab()<CR>
 nnoremap <buffer> <silent> <S-Tab> :call org#fold#shifttab()<CR>
+
+" In insert mode Tab / S-Tab move between table fields; elsewhere they fall
+" through to whatever was mapped before (e.g. a completion plugin's accept)
+" (keys are named without <>: inside a mapping's rhs Vim would turn '<Tab>' into
+" a real Tab character, even within quotes)
+call org#table#save_fallback('Tab')
+call org#table#save_fallback('S-Tab')
+inoremap <buffer> <silent> <expr> <Tab>   org#table#insert_key('Tab', 1)
+inoremap <buffer> <silent> <expr> <S-Tab> org#table#insert_key('S-Tab', -1)
 execute 'nnoremap <buffer> <silent> ' . s:l . 'f  :call org#fold#toggle_all()<CR>'
 
 " ── Reload ────────────────────────────────────────────────────────────────────
@@ -91,6 +100,8 @@ let b:undo_ftplugin =
   \ . ' wrap< linebreak< textwidth< conceallevel< concealcursor<'
   \ . '| silent! nunmap <buffer> <Tab>'
   \ . '| silent! nunmap <buffer> <S-Tab>'
+  \ . '| silent! iunmap <buffer> <Tab>'
+  \ . '| silent! iunmap <buffer> <S-Tab>'
   \ . '| silent! nunmap <buffer> ' . s:l . 'f'
   \ . '| silent! nunmap <buffer> ' . s:l . 't'
   \ . '| silent! nunmap <buffer> ' . s:l . 'T'

@@ -240,6 +240,10 @@ syntax match orgBlockBound /\c^#+\%(BEGIN\|END\)_\w\+/ contained
 syntax match orgMetaKey /^#+\w\+:/
 syntax match orgComment /^#\s.*$\|^#$/
 
+" ── Tables: separator lines and the | between fields ─────────────────────────
+syntax match orgTableHline /^\s*|-.*$/
+syntax match orgTableSep   /^\s*\zs|\|\%(^\s*|.*\)\@<=|/
+
 " ── Links [[url]] or [[url][desc]] ───────────────────────────────────────────
 syntax match orgLink /\[\[[^\]]*\]\(\[[^\]]*\]\)\?\]/
 

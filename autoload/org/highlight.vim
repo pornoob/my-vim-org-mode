@@ -61,6 +61,10 @@ function! org#highlight#apply() abort
   highlight orgCheckboxSummary ctermfg=108 cterm=NONE guifg=#8ec07c gui=NONE
   highlight link orgHRule      NonText
 
+  " Tables
+  highlight orgTableSep   ctermfg=242 guifg=#665c54
+  highlight link orgTableHline orgTableSep
+
   " Fold text — override whatever the colorscheme sets so org folds don't
   " appear in whatever bright color the theme chose for Folded.
   highlight Folded ctermfg=245 ctermbg=237 guifg=#928374 guibg=#3c3836 gui=NONE

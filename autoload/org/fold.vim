@@ -182,6 +182,9 @@ endfunction
 
 " Tab on a headline, block, or drawer open line cycles the fold; elsewhere indents.
 function! org#fold#tab() abort
+  if org#table#at()
+    return org#table#next_field()
+  endif
   let line = getline('.')
   if line =~# '^\*\+\s' || line =~? '^#+BEGIN_\w\+\|^\s*:\%(PROPERTIES\|LOGBOOK\):$'
     if foldclosed('.') >= 0
@@ -251,6 +254,9 @@ endfunction
 
 " S-Tab cycles OVERVIEW → CONTENTS → SHOW ALL
 function! org#fold#shifttab() abort
+  if org#table#at()
+    return org#table#prev_field()
+  endif
   if !exists('b:org_cycle') | let b:org_cycle = 2 | endif
   let b:org_cycle = (b:org_cycle + 1) % 3
 

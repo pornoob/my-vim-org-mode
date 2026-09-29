@@ -5,9 +5,8 @@ Given org (closed CLOCK line: recalculate):
 
 Execute:
   call org#dispatch#ctrl_c()
-
-Expect org:
-  CLOCK: [2026-07-01 mié 09:00]--[2026-07-01 mié 10:30] =>  1:30
+  let d = Date(2026, 7, 1)
+  AssertEqual 'CLOCK: [' . d . ' 09:00]--[' . d . ' 10:30] =>  1:30', getline(1)
 
 Given org (open CLOCK line: clock out):
   * Task
