@@ -358,6 +358,9 @@ Press `{leader}co` to close the open clock. Duration is computed and appended:
   CLOCK: [2026-07-09 Wed 09:00]--[2026-07-09 Wed 10:45] =>  1:45
 ```
 
+The duration is written as Emacs does (`%2d:%02d`): `=>  1:45`, `=> 10:30`.
+A new `CLOCK:` line is indented like its `:LOGBOOK:` drawer.
+
 ### Toggle
 
 `{leader}cc` clocks in when no clock is running, or clocks out if one is open.

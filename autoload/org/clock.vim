@@ -4,7 +4,8 @@ function! s:format_duration(seconds) abort
   let total_mins = a:seconds / 60
   let h = total_mins / 60
   let m = total_mins % 60
-  return printf('%d:%02d', h, m)
+  " Emacs org-clock-out: " => " . "%2d:%02d", so 1:30 gets two spaces, 10:30 one
+  return printf('%2d:%02d', h, m)
 endfunction
 
 " ── Julian Day Number (proleptic Gregorian calendar) ─────────────────────────
@@ -63,8 +64,10 @@ endfunction
 function! s:clock_in_at(headline_lnum) abort
   let ts           = org#core#format_ts(localtime(), 0)
   let logbook_lnum = org#core#ensure_logbook(a:headline_lnum)
-  " Insert right after :LOGBOOK: so newest entry appears first (Emacs convention)
-  call append(logbook_lnum, '  CLOCK: ' . ts)
+  " Insert right after :LOGBOOK: so newest entry appears first (Emacs convention),
+  " indented like the drawer
+  let indent       = matchstr(getline(logbook_lnum), '^\s*')
+  call append(logbook_lnum, indent . 'CLOCK: ' . ts)
 endfunction
 
 " ── Close an open CLOCK entry ─────────────────────────────────────────────────
@@ -102,9 +105,8 @@ function! s:clock_out_at(clock_lnum) abort
   let dur_str = s:format_duration(elapsed)
   let indent  = matchstr(l, '^\s*')
 
-  " Org format: CLOCK: [start]--[end] =>  H:MM  (two spaces before hours)
   call setline(a:clock_lnum,
-        \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' =>  ' . dur_str)
+        \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' => ' . dur_str)
 endfunction
 
 " ── Recalculate a closed CLOCK entry's duration from its timestamps ──────────
@@ -144,7 +146,7 @@ function! s:recalc_closed_at(lnum) abort
   if elapsed < 0 | let elapsed = 0 | endif
 
   call setline(a:lnum,
-        \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' =>  ' . s:format_duration(elapsed))
+        \ indent . 'CLOCK: ' . ts_in . '--' . ts_out . ' => ' . s:format_duration(elapsed))
   return 1
 endfunction
 

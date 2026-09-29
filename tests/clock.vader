@@ -1,0 +1,110 @@
+" Clocking: in / out / toggle and duration recalculation.
+
+Given org (clock in creates the drawer and an open entry):
+  * TODO Task
+    SCHEDULED: <2026-07-01 mié>
+  body
+
+Execute:
+  3
+  call org#clock#in()
+
+Then:
+  AssertEqual [
+        \ '* TODO Task',
+        \ '  SCHEDULED: <2026-07-01 mié>',
+        \ '  :LOGBOOK:',
+        \ '  CLOCK: ' . Now(),
+        \ '  :END:',
+        \ 'body',
+        \ ], getline(1, '$')
+
+Given org (clock in follows a column-0 drawer, newest entry first):
+  * Task
+  :LOGBOOK:
+  CLOCK: [2026-07-01 mié 09:00]--[2026-07-01 mié 10:00] =>  1:00
+  :END:
+
+Execute:
+  call org#clock#in()
+
+Then:
+  AssertEqual [':LOGBOOK:', 'CLOCK: ' . Now()], getline(2, 3)
+
+Given org (clock out closes the open entry with its duration):
+  * Task
+    :LOGBOOK:
+    CLOCK: START
+    :END:
+
+Execute:
+  let start = org#core#format_ts(localtime() - 90 * 60, 0)
+  call setline(3, '  CLOCK: ' . start)
+  call org#clock#out()
+
+Then:
+  AssertEqual '  CLOCK: ' . start . '--' . Now() . ' =>  1:30', getline(3)
+
+Given org (clock in elsewhere closes the running clock first):
+  * One
+    :LOGBOOK:
+    CLOCK: START
+    :END:
+  * Two
+
+Execute:
+  let start = org#core#format_ts(localtime() - 5 * 60, 0)
+  call setline(3, '  CLOCK: ' . start)
+  5
+  call org#clock#in()
+
+Then:
+  AssertEqual '  CLOCK: ' . start . '--' . Now() . ' =>  0:05', getline(3)
+  AssertEqual ['* Two', '  :LOGBOOK:', '  CLOCK: ' . Now(), '  :END:'], getline(5, '$')
+
+Given org (toggle clocks in when idle and out when running):
+  * Task
+
+Execute:
+  call org#clock#toggle()
+  Assert getline(3) =~# '^  CLOCK: \[[^]]*\]$', getline(3)
+  call org#clock#toggle()
+  Assert getline(3) =~# '--\[.*\] =>  0:0[01]$', getline(3)
+
+Given org (clock out with nothing running changes nothing):
+  * Task
+
+Execute:
+  call org#clock#out()
+
+Expect org:
+  * Task
+
+Given org (update recalculates a hand-edited entry and fixes day names):
+  CLOCK: [2026-07-01 xxx 09:00]--[2026-07-01 mié 19:45] =>  0:00
+
+Execute:
+  call org#clock#update()
+
+Then:
+  AssertEqual 'CLOCK: [' . Date(2026, 7, 1) . ' 09:00]--[' . Date(2026, 7, 1)
+        \ . ' 19:45] => 10:45', getline(1)
+
+Given org (update_all handles every closed entry, across midnight):
+  * Task
+    :LOGBOOK:
+    CLOCK: [2026-07-01 mié 23:30]--[2026-07-02 jue 00:15] =>  9:99
+    CLOCK: [2026-07-01 mié 10:00]
+    CLOCK: [2026-07-01 mié 08:00]--[2026-07-01 mié 07:00] =>  1:00
+    :END:
+
+Execute:
+  call org#clock#update_all()
+
+Expect org:
+  * Task
+    :LOGBOOK:
+    CLOCK: [2026-07-01 mié 23:30]--[2026-07-02 jue 00:15] =>  0:45
+    CLOCK: [2026-07-01 mié 10:00]
+    CLOCK: [2026-07-01 mié 08:00]--[2026-07-01 mié 07:00] =>  0:00
+    :END:
