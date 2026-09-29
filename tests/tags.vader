@@ -1,0 +1,55 @@
+" Tag editing ({leader}:) and the shared tag pattern, including non-ASCII tags.
+
+Given org (tags are added to a headline without any):
+  * TODO Task
+
+Do:
+  :call org#tags#edit()\<CR>work,home\<CR>
+
+Expect org:
+  * TODO Task :work:home:
+
+Given org (the prompt starts from the existing tags, non-ASCII included):
+  * REPEAT Revisión técnica :IMPORTANTE:VEHÍCULOS:
+
+Do:
+  :call org#tags#edit()\<CR>,AUTO\<CR>
+
+Expect org:
+  * REPEAT Revisión técnica :IMPORTANTE:VEHÍCULOS:AUTO:
+
+Given org (an emptied prompt cancels: Vim's input() returns '' for Esc too):
+  * Task   :a:b:
+
+" (Esc itself can't be replayed here: under :normal it acts like <CR>)
+Do:
+  :call org#tags#edit()\<CR>\<C-u>\<CR>
+
+Expect org:
+  * Task   :a:b:
+
+Execute (a colon inside the title is not a tag block):
+  let pat = '\s\zs' . org#core#tags_pattern()
+  AssertEqual ':a_1:@home:#x:%y:', matchstr('* T :a_1:@home:#x:%y:', pat)
+  AssertEqual ':MÉDICO:ñandú:', matchstr('* T :MÉDICO:ñandú:  ', pat)->trim()
+  AssertEqual '', matchstr('* Meeting at 10:30:', pat)
+  AssertEqual '', matchstr('* Ends in:colon:', pat)
+  AssertEqual '', matchstr('* Bad :a.b:', pat)
+
+Execute (completion lists the tags of the agenda files):
+  let f = tempname() . '.org'
+  call writefile(['* A :work:VEHÍCULOS:', 'body :not:', '** B :home:'], f)
+  let g:org_agenda_files = [f]
+  AssertEqual ['VEHÍCULOS', 'home', 'work'], org#tags#complete('', '', 0)
+  AssertEqual ['work'], org#tags#complete('w', '', 0)
+  let g:org_agenda_files = []
+  call delete(f)
+
+Given org (non-ASCII tags are highlighted as tags):
+  * Revisión técnica :IMPORTANTE:VEHÍCULOS:
+
+Execute:
+  let col = stridx(getline(1), ':IMP') + 1
+  AssertEqual 'orgTag', synIDattr(synID(1, col, 1), 'name')
+  AssertEqual 'orgTag', synIDattr(synID(1, col + 14, 1), 'name')
+  AssertNotEqual 'orgTag', synIDattr(synID(1, 3, 1), 'name')

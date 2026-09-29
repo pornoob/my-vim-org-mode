@@ -179,7 +179,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `<CR>` | Normal | Open link under cursor (same as `{leader}o`) |
 | `{leader},` | Normal | Cycle priority `[#A]` → `[#B]` → `[#C]` → _(none)_ |
 | `{leader};` | Normal | Cycle priority backward |
-| `{leader}:` | Normal | Edit tags on current headline |
+| `{leader}:` | Normal | Edit tags on current headline (comma-separated, with completion; any letter works, `:VEHÍCULOS:` included; an empty answer cancels, so delete the last tags by hand) |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
 | `{leader}$` | Normal | Archive subtree to `*.org_archive` |
 | `{leader}C` | Normal | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`) |

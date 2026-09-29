@@ -126,7 +126,7 @@ function! s:clean_text(raw) abort
   " Strip priority
   let t = substitute(t, '^\[#.\]\s*', '', '')
   " Strip tags at end
-  let t = substitute(t, '\s\+:[a-zA-Z0-9_@#%:]\+:\s*$', '', '')
+  let t = substitute(t, '\s\+' . org#core#tags_pattern(), '', '')
   return t
 endfunction
 

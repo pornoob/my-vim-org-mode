@@ -141,7 +141,7 @@ syntax match orgPriorityC /\[#C\]/ contained
 syntax match orgPriority  /\[#[D-Z]\]/ contained
 
 " ── Tags :foo:bar: at end of headline ─────────────────────────────────────────
-syntax match orgTag /\(:\w\+\)\+:$/ contained
+execute 'syntax match orgTag /\s\zs' . org#core#tags_pattern() . '/ contained'
 
 " ── Timestamps ────────────────────────────────────────────────────────────────
 syntax match orgTimestampActive   /<\d\{4}-\d\{2}-\d\{2}\%(\s\+[^>0-9 \t]\+\)\?\%(\s\+\d\{2}:\d\{2}\)\?>/

@@ -183,7 +183,7 @@ function! s:scan_file(path, kw) abort
       let prio = matchstr(text, '^\[#\zs.\ze\]')
       let text = substitute(text, '^\[#.\]\s*', '', '')
       " Strip trailing tags :foo:bar:
-      let text = substitute(text, '\s\+:[[:alnum:]_@#%:]\+:\s*$', '', '')
+      let text = substitute(text, '\s\+' . org#core#tags_pattern(), '', '')
       let text = substitute(text, '^\s\+\|\s\+$', '', 'g')
 
       let item = {

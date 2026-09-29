@@ -325,3 +325,16 @@ function! org#core#log_item(headline_lnum, lines) abort
   let item   = [indent . '- ' . a:lines[0] . (len(a:lines) > 1 ? ' \\' : '')]
   call append(lb, item + map(a:lines[1:], 'indent . "  " . v:val'))
 endfunction
+
+" One tag character, as Emacs' org-tag-re allows: any letter or digit (not
+" just ASCII: :VEHÍCULOS: is a tag) plus _ @ # %. Vim's \w and [:alnum:] are
+" ASCII-only, so the class is "not space, not ASCII punctuation" plus those.
+function! org#core#tag_char() abort
+  return '\%([^[:space:][:punct:]]\|[_@#%]\)'
+endfunction
+
+" Pattern for the tag block ':a:b:' at the end of a headline. Callers put
+" '\s\+' (or '\s\zs') in front: Emacs needs whitespace before the block.
+function! org#core#tags_pattern() abort
+  return ':\%(' . org#core#tag_char() . '\+:\)\+\s*$'
+endfunction

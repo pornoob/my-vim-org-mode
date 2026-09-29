@@ -13,6 +13,8 @@ function! org#tags#edit() abort
         \ 'customlist,org#tags#complete')
   echo ''
 
+  " Vim's input() returns '' for <Esc> too, so an empty answer cannot mean
+  " "clear the tags": it is always a cancel
   if raw ==# ''
     return
   endif
@@ -30,16 +32,12 @@ function! org#tags#complete(lead, line, pos) abort
 endfunction
 
 function! s:get_tags(line) abort
-  let m = matchstr(a:line, ':\zs\(\w\+\(:\w\+\)*\)\ze:\s*$')
-  if m ==# ''
-    return []
-  endif
-  return split(m, ':')
+  return split(trim(matchstr(a:line, '\s\zs' . org#core#tags_pattern())), ':')
 endfunction
 
 function! s:set_tags(lnum, tags) abort
   let line = getline(a:lnum)
-  let line = substitute(line, '\s*:\w\+\(:\w\+\)*:\s*$', '', '')
+  let line = substitute(line, '\s\+' . org#core#tags_pattern(), '', '')
   if !empty(a:tags)
     let line .= ' :' . join(a:tags, ':') . ':'
   endif
