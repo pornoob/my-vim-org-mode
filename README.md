@@ -39,6 +39,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
 - [Folding](#folding)
 - [Keeping Your Config Safe](#keeping-your-config-safe)
 - [File Layout](#file-layout)
+- [Running Tests](#running-tests)
 
 ---
 
@@ -1006,17 +1007,17 @@ vim-org/
 │   ├── clock.vim       – clock in/out, LOGBOOK management
 │   ├── clockreport.vim – clock report generator (#+BEGIN: clocktable)
 │   ├── config.vim      – OrgReload implementation
-│   ├── core.vim        – shared utilities (keyword parser, JDN, logbook)
+│   ├── core.vim        – shared utilities (keywords, dates, properties, logbook, tags)
 │   ├── date.vim        – SCHEDULED / DEADLINE insertion with calendar + time
 │   ├── dispatch.vim    – <C-c><C-c> context action (:OrgCtrlC)
 │   ├── fold.vim        – foldexpr, foldtext, Tab / S-Tab handlers, block border
 │   ├── headline.vim    – promote/demote (subtree + visual range)
 │   ├── highlight.vim   – all highlight group definitions (survives colorscheme reloads)
 │   ├── id.vim          – :ID: property generation
-│   ├── link.vim        – link opening ([[url]], [[file:]], [[id:]])
+│   ├── link.vim        – link opening ([[url]], [[file:…::search]], [[id:]], [[*H]])
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
 │   ├── tags.vim        – tag editing
-│   └── todo.vim        – TODO cycle logic, CLOSED timestamp, repeaters
+│   └── todo.vim        – TODO cycle logic, CLOSED, state logging, repeaters
 ├── config/
 │   └── user.vim        – user config template (not auto-loaded)
 ├── ftdetect/
@@ -1026,6 +1027,26 @@ vim-org/
 ├── plugin/
 │   ├── org.vim         – plugin guard + command definitions
 │   └── org_defaults.vim – default values for all g:org_* variables
-└── syntax/
-    └── org.vim         – full syntax definitions and highlight groups
+├── syntax/
+│   └── org.vim         – full syntax definitions and highlight groups
+└── tests/
+    ├── run.sh          – runs the Vader suite (see Running Tests)
+    ├── vimrc, helpers.vim
+    └── *.vader         – one suite per module
 ```
+
+---
+
+## Running Tests
+
+```sh
+tests/run.sh                       # the whole suite
+tests/run.sh tests/agenda.vader    # one file
+```
+
+The suite uses [Vader](https://github.com/junegunn/vader.vim), which `run.sh`
+clones into `tests/.vader/` on first run (git-ignored). It runs in a clean,
+headless Vim with only this plugin loaded (`tests/vimrc`), and exits non-zero on
+any failure — including Vim quitting before Vader's summary. Dates in the tests are
+built relative to today and in the current locale, so the suite passes on any day
+and with any `LANG`.
