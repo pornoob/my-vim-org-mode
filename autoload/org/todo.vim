@@ -135,68 +135,75 @@ function! s:log_closed(headline_lnum) abort
   call append(a:headline_lnum, '  CLOSED: ' . ts)
 endfunction
 
+" Shift every repeating SCHEDULED/DEADLINE stamp in the planning lines under
+" {headline_lnum}, the way Emacs org-auto-repeat-maybe does. Only the date and
+" day name change: time, repeater and warning delay are kept. Returns 1 when
+" at least one stamp was repeated (the entry then stays open, no CLOSED line).
 function! s:handle_repeat(headline_lnum) abort
+  let s:repeated = []
   let lnum = a:headline_lnum + 1
   while lnum <= line('$') && lnum <= a:headline_lnum + 5
     let l = getline(lnum)
-    let inner = matchstr(l, '\%(SCHEDULED\|DEADLINE\):\s*<\zs[^>]*\ze>')
-    if inner ==# ''
-      if l !~# '^\s*\%(SCHEDULED\|DEADLINE\):'
-        break
-      endif
-      let lnum += 1
-      continue
+    if l !~# '^\s*\%(SCHEDULED\|DEADLINE\|CLOSED\):'
+      break
     endif
-
-    let rm = matchlist(inner, '\(++\|\.+\|+\)\(\d\+\)\([dwmy]\)$')
-    if empty(rm)
-      let lnum += 1
-      continue
+    let new = substitute(l, '\(SCHEDULED\|DEADLINE\):\s*\zs<[^>]*>',
+          \ '\=s:repeat_stamp(submatch(0), submatch(1))', 'g')
+    if new !=# l
+      call setline(lnum, new)
     endif
-
-    let prefix = rm[1]
-    let num    = str2nr(rm[2])
-    let unit   = rm[3]
-    let old_date = matchstr(inner, '^\d\{4}-\d\{2}-\d\{2}')
-
-    let now = localtime()
-    let base_epoch = s:repeat_base_epoch(prefix, old_date, now)
-    if base_epoch < 0
-      let lnum += 1
-      continue
-    endif
-
-    let new_epoch = s:add_period(base_epoch, num, unit)
-    if prefix ==# '.+'
-      while new_epoch <= now
-        let new_epoch = s:add_period(new_epoch, num, unit)
-      endwhile
-    endif
-
-    let new_stamp = s:format_repeat_stamp(new_epoch)
-    let kw = matchstr(l, 'SCHEDULED\|DEADLINE')
-    call setline(lnum, substitute(l, '<[^>]*>', new_stamp, ''))
-    call s:reset_to_first_active(a:headline_lnum)
-    echo 'org: ' . kw . ' repeated — ' . new_stamp
-    return 1
+    let lnum += 1
   endwhile
-  return 0
-endfunction
 
-function! s:repeat_base_epoch(prefix, old_date_str, now_epoch) abort
-  if a:prefix ==# '+'
-    let m = matchlist(a:old_date_str, '^\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)$')
-    if empty(m) | return -1 | endif
-    return s:date_epoch(m[1]+0, m[2]+0, m[3]+0)
+  if empty(s:repeated)
+    return 0
   endif
-  return a:now_epoch
+  call s:reset_to_first_active(a:headline_lnum)
+  echo 'org: repeated — ' . join(s:repeated, '  ')
+  return 1
 endfunction
 
+" Return {stamp} ('<2026-07-01 Wed 09:00 +1m -2d>') moved to its next
+" occurrence, or unchanged when it carries no repeater.
+"   +N   old date + N units (may still be in the past)
+"   ++N  old date + N units, repeated until it lands after today
+"   .+N  today + N units
+function! s:repeat_stamp(stamp, kw) abort
+  let rm = matchlist(a:stamp, '\s\(++\|\.+\|+\)\(\d\+\)\([dwmy]\)\>')
+  let dm = matchlist(a:stamp, '^<\(\d\{4}\)-\(\d\{2}\)-\(\d\{2}\)')
+  if empty(rm) || empty(dm)
+    return a:stamp
+  endif
+  let [prefix, num, unit] = [rm[1], str2nr(rm[2]), rm[3]]
+  if num <= 0
+    return a:stamp
+  endif
+
+  let today = s:noon_today()
+  let base  = prefix ==# '.+' ? today : s:date_epoch(dm[1]+0, dm[2]+0, dm[3]+0)
+  let next  = s:add_period(base, num, unit)
+  if prefix ==# '++'
+    while next <= today
+      let next = s:add_period(next, num, unit)
+    endwhile
+  endif
+
+  let [y, m, d] = s:epoch_to_ymd(next)
+  let date = printf('%04d-%02d-%02d %s', y, m, d, org#core#dow(y, m, d))
+  let stamp = substitute(a:stamp,
+        \ '^<\d\{4}-\d\{2}-\d\{2}\%(\s\+[^> \t0-9+.-][^> \t]*\)\=',
+        \ '<' . escape(date, '\&'), '')
+  call add(s:repeated, a:kw . ' ' . stamp)
+  return stamp
+endfunction
+
+" Epoch at noon of {y}-{m}-{d}. Noon, not midnight: a DST jump shifts the
+" wall clock by an hour, which from midnight lands on the previous day.
 function! s:date_epoch(y, m, d) abort
   let now = localtime()
   let jdn  = s:jdn(a:y, a:m, a:d)
   let diff = jdn - s:jdn(strftime('%Y', now)+0, strftime('%m', now)+0, strftime('%d', now)+0)
-  return s:midnight_today() + diff * 86400
+  return s:noon_today() + diff * 86400
 endfunction
 
 function! s:jdn(y, m, d) abort
@@ -206,9 +213,10 @@ function! s:jdn(y, m, d) abort
   return a:d + (153 * mo + 2) / 5 + 365 * y + y/4 - y/100 + y/400 - 32045
 endfunction
 
-function! s:midnight_today() abort
+function! s:noon_today() abort
   let now = localtime()
   return now - strftime('%H', now) * 3600 - strftime('%M', now) * 60 - strftime('%S', now)
+        \ + 43200
 endfunction
 
 function! s:add_period(epoch, num, unit) abort
@@ -245,26 +253,23 @@ function! s:days_in_month(y, m) abort
   return (a:m == 4 || a:m == 6 || a:m == 9 || a:m == 11) ? 30 : 31
 endfunction
 
-function! s:format_repeat_stamp(epoch) abort
-  return strftime('<%Y-%m-%d %a>', a:epoch)
-endfunction
-
+" Put a repeated headline back to the first active keyword, replacing the done
+" state that was just applied (Emacs does the same after org-auto-repeat).
 function! s:reset_to_first_active(headline_lnum) abort
   let kw = org#core#keywords()
-  if empty(kw.all)
+  if empty(kw.active)
     return
   endif
-  let first = kw.active[0]
-  let line = getline(a:headline_lnum)
-  let m = matchlist(line, '^\(\*\+\s\+\)\(.*\)$')
+  let m = matchlist(getline(a:headline_lnum), '^\(\*\+\s\+\)\(.*\)$')
   if empty(m)
     return
   endif
   let rest = m[2]
   for state in kw.all
     if rest =~# '^\C' . state . '\>'
-      return
+      let rest = substitute(rest[len(state):], '^\s*', '', '')
+      break
     endif
   endfor
-  call setline(a:headline_lnum, m[1] . first . ' ' . rest)
+  call setline(a:headline_lnum, m[1] . kw.active[0] . ' ' . rest)
 endfunction

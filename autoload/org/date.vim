@@ -7,22 +7,24 @@ function! s:jdn(y, m, d) abort
   return a:d + (153 * mo + 2) / 5 + 365 * y + y/4 - y/100 + y/400 - 32045
 endfunction
 
-" Epoch of local midnight today
-function! s:midnight_today() abort
+" Epoch of local noon today. Noon, not midnight: stepping whole days across a
+" DST change moves the wall clock by an hour, which from midnight lands on the
+" previous day.
+function! s:noon_today() abort
   let now = localtime()
   return now - strftime('%H', now) * 3600
              \ - strftime('%M', now) * 60
-             \ - strftime('%S', now)
+             \ - strftime('%S', now) + 43200
 endfunction
 
-" Epoch of midnight on an arbitrary local date.
-" Computed as (JDN difference from today) * 86400 + midnight_today
+" Epoch of noon on an arbitrary local date.
+" Computed as (JDN difference from today) * 86400 + noon_today
 " so TZ/DST never enters the calculation.
 function! s:date_epoch(y, m, d) abort
   let now  = localtime()
   let diff = s:jdn(a:y, a:m, a:d)
            \ - s:jdn(strftime('%Y', now)+0, strftime('%m', now)+0, strftime('%d', now)+0)
-  return s:midnight_today() + diff * 86400
+  return s:noon_today() + diff * 86400
 endfunction
 
 " Format an epoch as an Org active date stamp.
@@ -51,11 +53,11 @@ function! s:parse_input(raw) abort
   if s ==# '' | return -1 | endif
 
   if s ==# 'today' || s ==# '.'
-    return s:midnight_today()
+    return s:noon_today()
   endif
 
   if s ==# 'tomorrow'
-    return s:midnight_today() + 86400
+    return s:noon_today() + 86400
   endif
 
   " +N / +Nd / +Nw / +Nm
@@ -65,7 +67,7 @@ function! s:parse_input(raw) abort
     let unit = empty(m[2]) ? 'd' : m[2]
     if unit ==# 'w' | let n = n * 7  | endif
     if unit ==# 'm' | let n = n * 30 | endif
-    return s:midnight_today() + n * 86400
+    return s:noon_today() + n * 86400
   endif
 
   " YYYY-MM-DD
