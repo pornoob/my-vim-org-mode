@@ -1,0 +1,111 @@
+" Clock report (#+BEGIN: clocktable … #+END:).
+
+Execute (helper):
+  " A closed clock line on today + {offset} days lasting {min} minutes.
+  function! Clock(offset, min) abort
+    let d = Ymd(a:offset)
+    return printf('CLOCK: [%s 08:00]--[%s %02d:%02d] => %2d:%02d',
+          \ d, d, 8 + a:min / 60, a:min % 60, a:min / 60, a:min % 60)
+  endfunction
+
+  " The report rows (between the separator lines) of the table on line 1.
+  function! Rows() abort
+    call cursor(1, 1)
+    call org#clockreport#update()
+    return getline(3, search('^#+END:', 'n') - 1)
+  endfunction
+
+Execute (file scope: children roll up, accents align, bold text is not a headline):
+  enew!
+  setfiletype org
+  call setline(1, ['#+BEGIN: clocktable :scope file :maxlevel 3', '#+END:',
+        \ '* TODO [#A] Revisión técnica :auto:', Clock(0, 60), '*bold* paragraph',
+        \ '** Parte', Clock(0, 15), '*** Detalle', Clock(0, 45),
+        \ '**** Too deep', Clock(0, 15), '* Otro', Clock(0, 45)])
+  AssertEqual [
+        \ '| Headline         |   Time |',
+        \ '|------------------+--------|',
+        \ '| *Total*          | *3:00* |',
+        \ '|------------------+--------|',
+        \ '| Revisión técnica |   2:15 |',
+        \ '|   \_ Parte       |   1:15 |',
+        \ '|     \_ Detalle   |   1:00 |',
+        \ '| Otro             |   0:45 |',
+        \ ], Rows()
+
+Given org (maxlevel 1 and a running clock):
+  #+BEGIN: clocktable :maxlevel 1
+  #+END:
+  * A
+  ** A1
+  CLOCK: START
+
+Execute:
+  call setline(5, 'CLOCK: ' . strftime('[%Y-%m-%d %a %H:%M]', localtime() - 20 * 60))
+  let rows = Rows()
+  AssertEqual 5, len(rows)
+  Assert rows[4] =~# '^| A \+|   0:2[01] |$', rows[4]
+
+Given org (:block today / thisweek and :tstart/:tend filter by clock start):
+  #+BEGIN: clocktable :block today
+  #+END:
+  * Today
+  * Long ago
+
+Execute:
+  call append(3, Clock(0, 30))
+  call append(5, Clock(-400, 60))
+  let rows = Rows()
+  AssertEqual '| Today    |   0:30 |', rows[-1]
+  call setline(1, '#+BEGIN: clocktable :block thisweek')
+  AssertEqual '| Today    |   0:30 |', Rows()[-1]
+  call setline(1, '#+BEGIN: clocktable :tstart [' . Ymd(-401) . '] :tend [' . Ymd(-399) . ']')
+  AssertEqual '| Long ago |   1:00 |', Rows()[-1]
+
+Execute (thisweek starts on Monday; lastweek is the 7 days before):
+  let today = org#core#jdn(strftime('%Y') + 0, strftime('%m') + 0, strftime('%d') + 0)
+  let monday = today - today % 7
+  let BlockRange = SFunc('clockreport', 'block_range')
+  let base = org#core#jdn(1970, 1, 1)
+  AssertEqual [(monday - base) * 86400, (monday + 7 - base) * 86400 - 1], BlockRange('thisweek')
+  AssertEqual [(monday - 7 - base) * 86400, (monday - base) * 86400 - 1], BlockRange('lastweek')
+  " JDN % 7 == 0 really is a Monday: 2026-09-28 was one
+  AssertEqual 0, org#core#jdn(2026, 9, 28) % 7
+
+Given org (subtree scope counts only the cursor's subtree):
+  * A
+  #+BEGIN: clocktable :scope subtree
+  #+END:
+  ** A1
+  * B
+
+Execute:
+  call append(4, Clock(0, 10))
+  call append(6, Clock(0, 99))
+  call cursor(2, 1)
+  call org#clockreport#update()
+  AssertEqual ['| *Total*  | *0:10* |', '|----------+--------|', '| A        |   0:10 |',
+        \ '|   \_ A1  |   0:10 |'], getline(6, 9)
+
+Given org (updating replaces the old table; no clocks gives a placeholder):
+  #+BEGIN: clocktable
+  | stale |
+  | rows  |
+  #+END:
+  * Nothing clocked
+
+Execute:
+  call cursor(2, 1)
+  call org#clockreport#update()
+  AssertEqual ['| Headline | Time |', '|----------+------|', '| /No clocked time/ | 0:00 |', '#+END:'],
+        \ getline(3, 6)
+
+Given org (no block around the cursor: one is inserted there):
+  * A
+  text
+
+Execute:
+  call cursor(2, 1)
+  call org#clockreport#update()
+  AssertEqual ['* A', '#+BEGIN: clocktable :scope file :maxlevel 3'], getline(1, 2)
+  AssertEqual ['#+END:', 'text'], getline(line('$') - 1, '$')

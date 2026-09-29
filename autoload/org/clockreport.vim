@@ -25,10 +25,13 @@ function! s:ts_to_epoch(ts) abort
   return -1
 endfunction
 
-function! s:today_epoch() abort
+" Now on the same scale as s:ts_to_epoch(): local wall-clock time counted as
+" if it were UTC. localtime() is true UTC and would be off by the UTC offset.
+function! s:now_epoch() abort
   let t = localtime()
-  let [y, mo, d] = [strftime('%Y', t)+0, strftime('%m', t)+0, strftime('%d', t)+0]
-  return (org#core#jdn(y, mo, d) - org#core#jdn(1970, 1, 1)) * 86400
+  return (org#core#jdn(strftime('%Y', t) + 0, strftime('%m', t) + 0, strftime('%d', t) + 0)
+        \ - org#core#jdn(1970, 1, 1)) * 86400
+        \ + strftime('%H', t) * 3600 + strftime('%M', t) * 60
 endfunction
 
 function! s:block_range(block) abort
@@ -109,26 +112,12 @@ function! s:parse_clock(line) abort
   if !empty(m2)
     let ep = s:ts_to_epoch(m2[1])
     if ep < 0 | return {} | endif
-    return {'start': ep, 'minutes': (localtime() - ep) / 60}
+    return {'start': ep, 'minutes': max([0, (s:now_epoch() - ep) / 60])}
   endif
   return {}
 endfunction
 
 " ── Headline text cleanup ─────────────────────────────────────────────────────
-
-function! s:clean_text(raw) abort
-  let t = a:raw
-  " Strip TODO keyword
-  let kws = org#core#keywords().all
-  if !empty(kws)
-    let t = substitute(t, '^\C\%(' . join(kws, '\|') . '\)\s\+', '', '')
-  endif
-  " Strip priority
-  let t = substitute(t, '^\[#.\]\s*', '', '')
-  " Strip tags at end
-  let t = substitute(t, '\s\+' . org#core#tags_pattern(), '', '')
-  return t
-endfunction
 
 " ── Scanning ─────────────────────────────────────────────────────────────────
 
@@ -142,11 +131,11 @@ function! s:scan(lines, params) abort
   let cur_hl = -1
 
   for line in a:lines
-    let stars = matchstr(line, '^\*\+')
+    let stars = matchstr(line, '^\*\+\ze\s')
     if !empty(stars)
       call add(nodes, {
         \ 'level':   len(stars),
-        \ 'text':    s:clean_text(matchstr(line, '^\*\+\s\+\zs.*')),
+        \ 'text':    org#core#headline_title(matchstr(line, '^\*\+\s\+\zs.*')),
         \ 'minutes': 0})
       let cur_hl = len(nodes) - 1
     elseif cur_hl >= 0 && line =~# '\s*CLOCK:'
@@ -175,6 +164,13 @@ function! s:scan(lines, params) abort
 endfunction
 
 " ── Rendering ─────────────────────────────────────────────────────────────────
+
+" {text} padded with spaces to {width} display cells, on the left when
+" {right} is set. printf('%-*s') counts bytes, which misaligns accented text.
+function! s:pad(text, width, right) abort
+  let fill = repeat(' ', max([0, a:width - strdisplaywidth(a:text)]))
+  return a:right ? fill . a:text : a:text . fill
+endfunction
 
 function! s:fmt_dur(min) abort
   return printf('%d:%02d', a:min / 60, a:min % 60)
@@ -208,20 +204,18 @@ function! s:render(entries, params) abort
   " Compute column widths
   let w_hl = len('Headline')
   for e in a:entries
-    let w = (e.level - 1) * 2 + (e.level > 1 ? 3 : 0) + len(e.text)
+    let w = (e.level - 1) * 2 + (e.level > 1 ? 3 : 0) + strdisplaywidth(e.text)
     if w > w_hl | let w_hl = w | endif
   endfor
   let w_hl = max([w_hl, len('*Total*')])
   let w_t  = max([len('Time'), len(s:fmt_dur(total)) + 2])  " +2 for bold stars
 
   let sep = '|' . repeat('-', w_hl + 2) . '+' . repeat('-', w_t + 2) . '|'
-  call add(lines, '| ' . printf('%-*s', w_hl, 'Headline')
-        \ . ' | ' . printf('%*s', w_t, 'Time') . ' |')
+  call add(lines, '| ' . s:pad('Headline', w_hl, 0) . ' | ' . s:pad('Time', w_t, 1) . ' |')
   call add(lines, sep)
 
   let total_s = '*' . s:fmt_dur(total) . '*'
-  call add(lines, '| ' . printf('%-*s', w_hl, '*Total*')
-        \ . ' | ' . printf('%*s', w_t, total_s) . ' |')
+  call add(lines, '| ' . s:pad('*Total*', w_hl, 0) . ' | ' . s:pad(total_s, w_t, 1) . ' |')
   call add(lines, sep)
 
   for e in a:entries
@@ -229,8 +223,7 @@ function! s:render(entries, params) abort
     let prefix = e.level > 1 ? '\_ ' : ''
     let label  = indent . prefix . e.text
     let dur    = s:fmt_dur(e.minutes)
-    call add(lines, '| ' . printf('%-*s', w_hl, label)
-          \ . ' | ' . printf('%*s', w_t, dur) . ' |')
+    call add(lines, '| ' . s:pad(label, w_hl, 0) . ' | ' . s:pad(dur, w_t, 1) . ' |')
   endfor
 
   return lines
@@ -240,14 +233,14 @@ endfunction
 
 function! s:subtree_lines() abort
   let lnum = line('.')
-  while lnum > 0 && getline(lnum) !~# '^\*'
+  while lnum > 0 && getline(lnum) !~# '^\*\+\s'
     let lnum -= 1
   endwhile
   if lnum == 0 | return getline(1, line('$')) | endif
   let level = len(matchstr(getline(lnum), '^\*\+'))
   let last = lnum + 1
   while last <= line('$')
-    if getline(last) =~# '^\*\+' && len(matchstr(getline(last), '^\*\+')) <= level
+    if getline(last) =~# '^\*\+\s' && len(matchstr(getline(last), '^\*\+')) <= level
       break
     endif
     let last += 1
