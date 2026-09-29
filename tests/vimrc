@@ -1,0 +1,7 @@
+" Minimal vimrc for tests/run.sh: this plugin and Vader, nothing of the user's.
+set nocompatible
+let s:root = fnamemodify(expand('<sfile>:p'), ':h:h')
+let &runtimepath = s:root . ',' . s:root . '/tests/.vader,' . &runtimepath
+filetype plugin indent on
+syntax on
+execute 'source ' . fnameescape(s:root . '/tests/helpers.vim')

@@ -13,3 +13,4 @@ Desktop.ini
 # Editor directories
 .vscode/
 .idea/
+tests/.vader/
