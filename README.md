@@ -17,6 +17,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Sequential cycling](#sequential-cycling)
   - [Shortcut-key picker](#shortcut-key-picker)
   - [File-local keywords](#file-local-keywords)
+  - [State-change logging](#state-change-logging)
   - [Repeating tasks on DONE](#repeating-tasks-on-done)
 - [Context Action](#context-action)
 - [Clocking](#clocking)
@@ -233,9 +234,38 @@ for that file only:
 - The `|` separator marks the done/active boundary.
 - Matching is case-insensitive (`#+seq_todo:` works).
 - `#+TODO:` is accepted as a synonym of `#+SEQ_TODO:`.
-- Emacs logging specs are parsed and tolerated: `DONE(d@/!)` keeps `d` as the
-  shortcut, `WAIT(@/!)` has no shortcut. The `@` / `!` markers themselves are
-  ignored for now — no state-change note is written.
+- Emacs logging specs are understood: `DONE(d@/!)` keeps `d` as the shortcut,
+  `WAIT(@/!)` has no shortcut, and the `@` / `!` markers turn on
+  [state-change logging](#state-change-logging).
+
+### State-change logging
+
+The `!` and `@` markers in `#+SEQ_TODO:` log state changes into the headline's
+`:LOGBOOK:` drawer, the way Emacs does with `org-log-into-drawer`:
+
+| Marker | Effect |
+|---|---|
+| `DONE(d!)` | Entering `DONE` logs a timestamp |
+| `DONE(d@)` | Entering `DONE` logs a timestamp and prompts for a one-line note |
+| `WAIT(w@/!)` | Note when entering `WAIT`, timestamp when leaving it |
+
+The marker of the state being entered wins; when it has none, the leaving marker
+of the old state applies. An empty note (or `<Esc>`) logs just the timestamp.
+
+```org
+#+SEQ_TODO: TODO(t) WAIT(w@/!) | DONE(d@)
+* DONE Pay the bill
+  CLOSED: [2026-09-29 Tue 18:34]
+  :LOGBOOK:
+  - State "DONE"       from "TODO"       [2026-09-29 Tue 18:34] \\
+    Paid in cash
+  :END:
+```
+
+- The newest item goes on top. An existing drawer is reused with its indentation;
+  a new one is placed after the planning lines and `:PROPERTIES:`.
+- Files without markers (and the global `g:org_todo_keywords`) log nothing, except
+  for repeating tasks (below).
 
 ### Repeating tasks on DONE
 
@@ -253,7 +283,23 @@ After `{leader}t` → `DONE`:
 ```org
 * TODO Pay rent
   SCHEDULED: <2026-08-01 Sat +1m>
+  :PROPERTIES:
+  :LAST_REPEAT: [2026-07-01 Wed 09:12]
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "TODO"       [2026-07-01 Wed 09:12]
+  :END:
 ```
+
+Like Emacs' `org-log-repeat`, every repeat is logged and stamped with
+`:LAST_REPEAT:`, with or without markers in `#+SEQ_TODO:`. `g:org_log_repeat`
+controls it:
+
+| Value | Effect |
+|---|---|
+| `'time'` (default) | State line with a timestamp, plus `:LAST_REPEAT:` |
+| `'note'` | Same, and prompts for a note |
+| `''` | Nothing (a `@` marker on the done state still asks for a note) |
 
 | Repeater | Next date |
 |---|---|
@@ -612,7 +658,7 @@ recorded in the headline's `:LOGBOOK:` drawer automatically:
 * TODO Pay invoice
   SCHEDULED: <2026-07-15 Wed>
   :LOGBOOK:
-  - Rescheduled from "<2026-07-09 Wed>" on [2026-07-09 Wed 10:12]
+  - Rescheduled from "[2026-07-09 Wed]" on [2026-07-09 Wed 10:12]
   :END:
 ```
 

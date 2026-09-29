@@ -52,10 +52,48 @@ function! s:apply_state(new_kw, kw) abort
   else
     call setline(lnum, stars . a:new_kw . ' ' . rest)
     echo 'org: ' . a:new_kw
+    let repeated = 0
     if index(a:kw.done, a:new_kw) >= 0
-      call s:log_closed(lnum)
+      let repeated = s:log_closed(lnum)
+    endif
+    if a:new_kw !=# cur
+      call s:log_state(lnum, a:new_kw, cur, a:kw, repeated)
     endif
   endif
+endfunction
+
+" Log a state change into :LOGBOOK: the way Emacs does with
+" org-log-into-drawer: the new state's on-enter marker wins, else the old
+" state's on-leave one ('!' = timestamp, '@' = timestamp + note). An entry
+" that just repeated is logged per g:org_log_repeat, which also stamps
+" :LAST_REPEAT:.
+function! s:log_state(lnum, new, old, kw, repeated) abort
+  let how = get(get(a:kw.log, a:new, []), 0, '')
+  if empty(how)
+    let how = get(get(a:kw.log, a:old, []), 1, '')
+  endif
+  let ts = org#core#format_ts(localtime(), 0)
+
+  let rep = get(g:, 'org_log_repeat', 'time')
+  if a:repeated && !empty(rep)
+    call org#core#set_property(a:lnum, 'LAST_REPEAT', ts)
+    if how !=# '@'
+      let how = rep ==# 'note' ? '@' : '!'
+    endif
+  endif
+  if empty(how)
+    return
+  endif
+
+  let item = [printf('State %-12s from %-12s %s',
+        \ '"' . a:new . '"', '"' . a:old . '"', ts)]
+  if how ==# '@'
+    let note = trim(input('Note (' . a:new . '): '))
+    if !empty(note)
+      call add(item, note)
+    endif
+  endif
+  call org#core#log_item(a:lnum, item)
 endfunction
 
 " Sequential cycle: dir=+1 forward, dir=-1 backward.
@@ -112,9 +150,11 @@ function! s:select_state(kw) abort
   endif
 endfunction
 
+" Stamp CLOSED on an entry just marked done, or repeat it when its planning
+" stamps carry a repeater. Returns 1 when the entry repeated.
 function! s:log_closed(headline_lnum) abort
   if s:handle_repeat(a:headline_lnum)
-    return
+    return 1
   endif
 
   let ts   = org#core#format_ts(localtime(), 0)

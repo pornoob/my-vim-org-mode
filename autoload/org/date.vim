@@ -83,8 +83,8 @@ endfunction
 
 function! s:log_reschedule(headline_lnum, old_ts) abort
   let now_ts = org#core#format_ts(localtime(), 0)
-  let entry  = '  - Rescheduled from "' . a:old_ts . '" on ' . now_ts
-  call append(org#core#ensure_logbook(a:headline_lnum), entry)
+  let old    = '[' . a:old_ts[1:-2] . ']'
+  call org#core#log_item(a:headline_lnum, ['Rescheduled from "' . old . '" on ' . now_ts])
 endfunction
 
 " ── Planning line management ──────────────────────────────────────────────────

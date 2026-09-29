@@ -1,0 +1,190 @@
+" State-change logging driven by the #+SEQ_TODO markers (! = timestamp,
+" @ = timestamp + note, x/y = on enter / on leave) and g:org_log_repeat.
+
+Before:
+  let g:org_log_repeat = 'time'
+  let g:org_todo_keywords = ['TODO', 'NEXT', 'WAITING', '|', 'DONE', 'CANCELLED']
+
+Given org (enter marker ! logs a timestamp):
+  #+SEQ_TODO: TODO(t) | DONE(d!)
+  * TODO Task
+
+Do:
+  j:call org#todo#cycle()\<CR>d
+
+Then:
+  AssertEqual [
+        \ '#+SEQ_TODO: TODO(t) | DONE(d!)',
+        \ '* DONE Task',
+        \ '  CLOSED: ' . Now(),
+        \ '  :LOGBOOK:',
+        \ '  - State "DONE"       from "TODO"       ' . Now(),
+        \ '  :END:',
+        \ ], getline(1, '$')
+
+Given org (enter marker @ asks for a note):
+  #+SEQ_TODO: TODO(t) | DONE(d@)
+  * TODO Task
+
+Do:
+  j:call org#todo#cycle()\<CR>dPaid in cash\<CR>
+
+Then:
+  AssertEqual [
+        \ '  :LOGBOOK:',
+        \ '  - State "DONE"       from "TODO"       ' . Now() . ' \\',
+        \ '    Paid in cash',
+        \ '  :END:',
+        \ ], getline(4, '$')
+
+Given org (an empty note logs the timestamp alone):
+  #+SEQ_TODO: TODO(t) | DONE(d@)
+  * TODO Task
+
+Do:
+  j:call org#todo#cycle()\<CR>d\<CR>
+
+Then:
+  AssertEqual '  - State "DONE"       from "TODO"       ' . Now(), getline(5)
+
+Given org (leave marker applies when the new state has none):
+  #+SEQ_TODO: TODO(t) WAIT(w@/!) | DONE(d)
+  * WAIT Task
+
+Do:
+  j:call org#todo#cycle()\<CR>t
+
+Then:
+  AssertEqual [
+        \ '* TODO Task',
+        \ '  :LOGBOOK:',
+        \ '  - State "TODO"       from "WAIT"       ' . Now(),
+        \ '  :END:',
+        \ ], getline(2, '$')
+
+Given org (no markers, no log):
+  #+SEQ_TODO: TODO(t) | DONE(d)
+  * TODO Task
+
+Do:
+  j:call org#todo#cycle()\<CR>d
+
+Then:
+  AssertEqual ['* DONE Task', '  CLOSED: ' . Now()], getline(2, '$')
+
+Given org (plain cycle without #+SEQ_TODO logs nothing):
+  * TODO Task
+
+Execute:
+  call org#todo#cycle()
+
+Expect org:
+  * NEXT Task
+
+Given org (newest item goes on top of an existing drawer, with its indent):
+  #+SEQ_TODO: TODO(t) NEXT(n!) | DONE(d)
+  * TODO Task
+  :LOGBOOK:
+  - State "TODO"       from ""           [2026-01-01 jue 10:00]
+  :END:
+
+Do:
+  j:call org#todo#cycle()\<CR>n
+
+Then:
+  AssertEqual [
+        \ '* NEXT Task',
+        \ ':LOGBOOK:',
+        \ '- State "NEXT"       from "TODO"       ' . Now(),
+        \ '- State "TODO"       from ""           [2026-01-01 jue 10:00]',
+        \ ':END:',
+        \ ], getline(2, '$')
+
+Given org (repeat: state line, LAST_REPEAT, heading back to TODO):
+  * TODO Pay rent
+  SCHEDULED: <2026-07-01 mié 09:00 +1m>
+
+Execute:
+  let g:org_todo_keywords = ['TODO', '|', 'DONE']
+  call org#todo#cycle()
+
+Then:
+  AssertEqual [
+        \ '* TODO Pay rent',
+        \ 'SCHEDULED: <' . Date(2026, 8, 1) . ' 09:00 +1m>',
+        \ ':PROPERTIES:',
+        \ ':LAST_REPEAT: ' . Now(),
+        \ ':END:',
+        \ ':LOGBOOK:',
+        \ '- State "DONE"       from "TODO"       ' . Now(),
+        \ ':END:',
+        \ ], getline(1, '$')
+
+Given org (repeat: an existing LAST_REPEAT is replaced, not duplicated):
+  * TODO Pay rent
+  SCHEDULED: <2026-07-01 mié +1m>
+  :PROPERTIES:
+  :ID:       abc
+  :LAST_REPEAT: [2026-06-01 lun 08:00]
+  :END:
+
+Execute:
+  let g:org_todo_keywords = ['TODO', '|', 'DONE']
+  call org#todo#cycle()
+
+Then:
+  AssertEqual [
+        \ ':PROPERTIES:',
+        \ ':ID:       abc',
+        \ ':LAST_REPEAT: ' . Now(),
+        \ ':END:',
+        \ ':LOGBOOK:',
+        \ ], getline(3, 7)
+
+Given org (repeat with g:org_log_repeat = '' logs nothing):
+  * TODO Pay rent
+  SCHEDULED: <2026-07-01 mié +1m>
+
+Execute:
+  let g:org_log_repeat = ''
+  let g:org_todo_keywords = ['TODO', '|', 'DONE']
+  call org#todo#cycle()
+
+Then:
+  AssertEqual ['* TODO Pay rent', 'SCHEDULED: <' . Date(2026, 8, 1) . ' +1m>'],
+        \ getline(1, '$')
+
+Given org (repeat with g:org_log_repeat = 'note' asks for a note):
+  * TODO Pay rent
+  SCHEDULED: <2026-07-01 mié +1m>
+
+Execute:
+  " Before runs ahead of every block, so setup and keys go in one Execute
+  let g:org_log_repeat = 'note'
+  let g:org_todo_keywords = ['TODO', '|', 'DONE']
+  call feedkeys("Done early\<CR>", 't')
+  call org#todo#cycle()
+
+Then:
+  AssertEqual [
+        \ '- State "DONE"       from "TODO"       ' . Now() . ' \\',
+        \ '  Done early',
+        \ ':END:',
+        \ ], getline(7, '$')
+
+Given org (repeat in a file with REPEAT(r!) | DONE(d@/!), as in ~/org):
+  #+SEQ_TODO: NEXT(n) TODO(t) REPEAT(r!) | DONE(d@/!) CANCELLED(c@/!)
+  * REPEAT Pill for the dog
+  SCHEDULED: <2026-07-01 mié ++30d>
+
+Do:
+  j:call org#todo#cycle()\<CR>dGiven 3 days ago\<CR>
+
+Then:
+  AssertEqual '* NEXT Pill for the dog', getline(2)
+  AssertEqual ':LAST_REPEAT: ' . Now(), getline(5)
+  AssertEqual [
+        \ '- State "DONE"       from "REPEAT"     ' . Now() . ' \\',
+        \ '  Given 3 days ago',
+        \ ':END:',
+        \ ], getline(8, '$')

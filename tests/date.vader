@@ -1,0 +1,39 @@
+" SCHEDULED / DEADLINE planning lines and reschedule logging.
+
+Given org (first SCHEDULED is inserted without a log note):
+  * TODO Task
+
+Execute:
+  call SFunc('date', 'set_planning')('SCHEDULED', '<2026-07-15 mié>')
+
+Expect org:
+  * TODO Task
+    SCHEDULED: <2026-07-15 mié>
+
+Given org (replacing a date logs the old one, Emacs style):
+  * TODO Task
+    SCHEDULED: <2026-07-09 jue +1w>
+
+Execute:
+  call SFunc('date', 'set_planning')('SCHEDULED', '<2026-07-15 mié +1w>')
+
+Then:
+  AssertEqual [
+        \ '* TODO Task',
+        \ '  SCHEDULED: <2026-07-15 mié +1w>',
+        \ '  :LOGBOOK:',
+        \ '  - Rescheduled from "[2026-07-09 jue +1w]" on ' . Now(),
+        \ '  :END:',
+        \ ], getline(1, '$')
+
+Given org (DEADLINE goes after an existing SCHEDULED):
+  * TODO Task
+    SCHEDULED: <2026-07-09 jue>
+
+Execute:
+  call SFunc('date', 'set_planning')('DEADLINE', '<2026-07-20 lun>')
+
+Expect org:
+  * TODO Task
+    SCHEDULED: <2026-07-09 jue>
+    DEADLINE: <2026-07-20 lun>

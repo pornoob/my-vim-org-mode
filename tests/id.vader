@@ -1,0 +1,59 @@
+" :ID: property creation (org#id#set) on top of org#core#set_property.
+
+Execute (new drawer after planning lines, Emacs spacing):
+  new | setfiletype org
+  call setline(1, ['* TODO Task', '  SCHEDULED: <2026-07-01 mié>'])
+  call org#id#set()
+  AssertEqual '  :PROPERTIES:', getline(3)
+  Assert getline(4) =~# '^  :ID:       [0-9a-f-]\{36}$', getline(4)
+  AssertEqual '  :END:', getline(5)
+  bwipeout!
+
+Given org (existing drawer is reused, even after :LOGBOOK:):
+  * Task
+  :LOGBOOK:
+  - Note taken on [2026-01-01 jue 10:00]
+  :END:
+  :PROPERTIES:
+  :CATEGORY: home
+  :END:
+
+Execute:
+  call org#id#set()
+
+Then:
+  AssertEqual 8, line('$')
+  AssertEqual ':CATEGORY: home', getline(6)
+  Assert getline(7) =~# '^:ID:       \S\+$', getline(7)
+
+Given org (an existing ID is left alone):
+  * Task
+  :PROPERTIES:
+  :ID:       abc-123
+  :END:
+
+Execute:
+  call org#id#set()
+
+Expect org:
+  * Task
+  :PROPERTIES:
+  :ID:       abc-123
+  :END:
+
+Given org (set_property replaces a value in place, keeping indent):
+  * Task
+    :PROPERTIES:
+    :EFFORT:   1:00
+    :END:
+
+Execute:
+  call org#core#set_property(1, 'EFFORT', '2:30')
+  call org#core#set_property(1, 'LAST_REPEAT', '[2026-01-01 jue 10:00]')
+
+Expect org:
+  * Task
+    :PROPERTIES:
+    :EFFORT:   2:30
+    :LAST_REPEAT: [2026-01-01 jue 10:00]
+    :END:

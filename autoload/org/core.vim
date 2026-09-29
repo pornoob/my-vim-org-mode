@@ -1,10 +1,13 @@
 " Scan the current buffer for #+SEQ_TODO: or #+TODO: file-local directives.
-" Returns {active, done, all, shortcuts, has_shortcuts} if found, {} otherwise.
-" Keywords like TODO(t) have their shortcut extracted; stripped name is used.
+" Returns {active, done, all, shortcuts, has_shortcuts, log} if found, {}
+" otherwise. Keywords like TODO(t) have their shortcut extracted; stripped name
+" is used. log maps a state to [on_enter, on_leave], each '!' (timestamp),
+" '@' (timestamp + note) or '': DONE(d@/!) → {'DONE': ['@', '!']}.
 function! org#core#file_keywords() abort
   let active    = []
   let done      = []
   let shortcuts = {}
+  let log       = {}
   let in_done   = 0
 
   for lnum in range(1, min([line('$'), 200]))
@@ -25,6 +28,11 @@ function! org#core#file_keywords() abort
           if !empty(key)
             let shortcuts[key] = kw
           endif
+          let spec = split(km[2][len(key):], '/', 1)
+          if !empty(join(spec, ''))
+            let log[kw] = [matchstr(spec[0], '[@!]'),
+                  \ matchstr(get(spec, 1, ''), '[@!]')]
+          endif
         else
           let kw = tok
         endif
@@ -37,13 +45,14 @@ function! org#core#file_keywords() abort
           \ 'all':           active + done,
           \ 'shortcuts':     shortcuts,
           \ 'has_shortcuts': !empty(shortcuts),
+          \ 'log':           log,
           \ }
   endfor
 
   return {}
 endfunction
 
-" Returns {active, done, all, shortcuts, has_shortcuts}.
+" Returns {active, done, all, shortcuts, has_shortcuts, log}.
 " Priority: #+SEQ_TODO in file > g:org_todo_keywords > built-in defaults.
 function! org#core#keywords() abort
   let file_kw = org#core#file_keywords()
@@ -77,6 +86,7 @@ function! org#core#keywords() abort
         \ 'all':           active + done,
         \ 'shortcuts':     {},
         \ 'has_shortcuts': 0,
+        \ 'log':           {},
         \ }
 endfunction
 
@@ -225,6 +235,93 @@ function! org#core#ensure_logbook(headline_lnum) abort
     endif
   endwhile
 
-  call append(last_meta, ['  :LOGBOOK:', '  :END:'])
+  " Indent like the entry's own metadata; two spaces when it has none
+  let indent = last_meta > a:headline_lnum ? matchstr(getline(last_meta), '^\s*') : '  '
+  call append(last_meta, [indent . ':LOGBOOK:', indent . ':END:'])
   return last_meta + 1
+endfunction
+
+" Scan the header block of the entry at {headline_lnum}: planning lines, blank
+" lines and complete drawers, in whatever order the file happens to use. Some
+" files put :LOGBOOK: before :PROPERTIES:, so the scan must step over a whole
+" drawer instead of giving up at the first one it meets.
+" Returns {'props': [start, end], 'insert_after': lnum, 'indent': str};
+" props is [0, 0] when the entry has no :PROPERTIES: drawer.
+function! org#core#scan_header(headline_lnum) abort
+  let lnum         = a:headline_lnum + 1
+  let last         = line('$')
+  let insert_after = a:headline_lnum
+  let props        = [0, 0]
+  let indent       = ''
+
+  while lnum <= last
+    let l = getline(lnum)
+
+    if l =~# '^\s*$'
+      let lnum += 1
+
+    elseif l =~# '^\s*\%(SCHEDULED:\|DEADLINE:\|CLOSED:\)'
+      " A new :PROPERTIES: drawer belongs just after the planning lines
+      let insert_after = lnum
+      if empty(indent) | let indent = matchstr(l, '^\s*') | endif
+      let lnum += 1
+
+    elseif l =~# '^\s*:\a[[:alnum:]_-]*:\s*$' && l !~? '^\s*:END:\s*$'
+      let is_props = l =~? '^\s*:PROPERTIES:\s*$'
+      let dstart   = lnum
+      let lnum    += 1
+      while lnum <= last && getline(lnum) !~? '^\s*:END:\s*$'
+            \ && getline(lnum) !~# '^\*'
+        let lnum += 1
+      endwhile
+      if lnum > last || getline(lnum) !~? '^\s*:END:\s*$'
+        break   " unterminated drawer: do not walk off into the rest of the file
+      endif
+      if is_props && props[0] == 0
+        let props  = [dstart, lnum]
+        let indent = matchstr(l, '^\s*')
+      elseif empty(indent)
+        let indent = matchstr(l, '^\s*')
+      endif
+      let lnum += 1
+
+    else
+      break
+    endif
+  endwhile
+
+  return {'props': props, 'insert_after': insert_after, 'indent': indent}
+endfunction
+
+" Set property {key} of the entry at {headline_lnum} to {value}: rewrite the
+" line when the key is already there, else add it to the entry's :PROPERTIES:
+" drawer, creating the drawer after the planning lines when there is none.
+function! org#core#set_property(headline_lnum, key, value) abort
+  let hdr  = org#core#scan_header(a:headline_lnum)
+  " Emacs org-property-format: key column 10 wide, then one space
+  let line = hdr.indent . printf('%-10s %s', ':' . a:key . ':', a:value)
+
+  if hdr.props[0] > 0
+    for lnum in range(hdr.props[0] + 1, hdr.props[1] - 1)
+      if getline(lnum) =~? '^\s*:' . a:key . ':'
+        call setline(lnum, matchstr(getline(lnum), '^\s*') . printf('%-10s %s', ':' . a:key . ':', a:value))
+        return
+      endif
+    endfor
+    call append(hdr.props[1] - 1, line)
+    return
+  endif
+
+  call append(hdr.insert_after, [hdr.indent . ':PROPERTIES:', hdr.indent . ':END:'])
+  call append(hdr.insert_after + 1, line)
+endfunction
+
+" Add a log item at the top of the entry's :LOGBOOK: (newest first, as Emacs
+" does), indented like the drawer. {lines}[0] is the item text; any further
+" lines are a note, attached with Emacs' ' \\' line break.
+function! org#core#log_item(headline_lnum, lines) abort
+  let lb     = org#core#ensure_logbook(a:headline_lnum)
+  let indent = matchstr(getline(lb), '^\s*')
+  let item   = [indent . '- ' . a:lines[0] . (len(a:lines) > 1 ? ' \\' : '')]
+  call append(lb, item + map(a:lines[1:], 'indent . "  " . v:val'))
 endfunction

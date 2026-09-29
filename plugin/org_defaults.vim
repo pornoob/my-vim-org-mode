@@ -13,6 +13,16 @@ if !exists('g:org_todo_keywords')
   let g:org_todo_keywords = ['TODO', 'NEXT', 'WAITING', '|', 'DONE', 'CANCELLED']
 endif
 
+" Logging when a repeating entry is marked done (Emacs org-log-repeat):
+"   'time' — add '- State "DONE" from "TODO" [ts]' to :LOGBOOK: and set
+"            :LAST_REPEAT:
+"   'note' — the same, and prompt for a note
+"   ''     — log nothing (a '@' marker in #+SEQ_TODO still asks for a note)
+" Other state changes are logged per the markers in #+SEQ_TODO: DONE(d@/!).
+if !exists('g:org_log_repeat')
+  let g:org_log_repeat = 'time'
+endif
+
 " Per-keyword colour overrides.
 " Keys are keyword strings; values are either:
 "   • a raw :highlight spec  'ctermfg=196 cterm=bold guifg=#fb4934 gui=bold'
