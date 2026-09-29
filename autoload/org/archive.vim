@@ -89,24 +89,12 @@ function! s:olpath(hl) abort
   while lnum > 0 && level > 1
     let m = matchlist(getline(lnum), '^\(\*\+\)\s\+\(.*\)$')
     if !empty(m) && len(m[1]) < level
-      call insert(path, s:title(m[2]))
+      call insert(path, org#core#headline_title(m[2]))
       let level = len(m[1])
     endif
     let lnum -= 1
   endwhile
   return join(path, '/')
-endfunction
-
-" Headline text without keyword, priority or tags.
-function! s:title(text) abort
-  let t   = a:text
-  let kws = org#core#keywords().all
-  if !empty(kws)
-    let t = substitute(t, '^\C\%(' . join(map(copy(kws), 'escape(v:val, "\\")'), '\|') . '\)\s\+', '', '')
-  endif
-  let t = substitute(t, '^\[#.\]\s*', '', '')
-  let t = substitute(t, '\s\+' . org#core#tags_pattern(), '', '')
-  return trim(t)
 endfunction
 
 " #+CATEGORY of the file, or its name without extension.

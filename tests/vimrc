@@ -6,4 +6,6 @@ filetype plugin indent on
 syntax on
 " Messages pile up during a run; a -- More -- prompt would read EOF and quit
 set nomore
+" Tests rewrite files that may still be loaded: no swap or "file changed" prompts
+set noswapfile autoread
 execute 'source ' . fnameescape(s:root . '/tests/helpers.vim')

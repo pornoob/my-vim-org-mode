@@ -30,6 +30,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Text-prompt fallback](#text-prompt-fallback)
   - [Reschedule logging](#reschedule-logging)
 - [Archiving](#archiving)
+- [Links](#links)
 - [Promote and Demote](#promote-and-demote)
 - [Checkboxes](#checkboxes)
 - [Commands](#commands)
@@ -176,7 +177,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}R` | Normal | Reload org config (`:OrgReload`) |
 | `{leader}x` | Normal | Toggle checkbox `[ ]` → `[X]` → `[-]` → `[ ]` |
 | `{leader}x` | Visual | Toggle all checkboxes in selection |
-| `{leader}o` | Normal | Open link under cursor (`[[url]]`, `[[file:path]]`, `[[id:uuid]]`) |
+| `{leader}o` | Normal | [Open link](#links) under cursor (`[[url]]`, `[[file:path::*Heading]]`, `[[id:uuid]]`, `[[*Heading]]`) |
 | `<CR>` | Normal | Open link under cursor (same as `{leader}o`) |
 | `{leader},` | Normal | Cycle priority `[#A]` → `[#B]` → `[#C]` → _(none)_ |
 | `{leader};` | Normal | Cycle priority backward |
@@ -706,6 +707,28 @@ entry, with its context recorded in `:PROPERTIES:`:
 | `'::* Archive'` | Under `* Archive` in the same file |
 
 `%s` is the current file's full path.
+
+---
+
+## Links
+
+`{leader}o`, `<CR>` or `<C-c><C-c>` on a `[[link]]` or `[[link][description]]`
+follows it, as Emacs' `org-open-at-point` does:
+
+| Link | Opens |
+|---|---|
+| `[[file:~/org/work.org]]` | The file. `~` and `$VARS` are expanded; a relative path is relative to the current file |
+| `[[file:work.org::42]]` | …at line 42 |
+| `[[file:work.org::*Unpaid hours]]` | …at the headline with that title (keyword, priority and tags ignored) |
+| `[[file:work.org::#my-id]]` | …at the headline whose `:CUSTOM_ID:` is `my-id` |
+| `[[file:work.org::some text]]` | …at the first occurrence of the text |
+| `[[./work.org]]`, `[[~/org/work.org::*Heading]]` | Bare paths work like `file:` links |
+| `[[*Heading]]`, `[[#my-id]]` | A headline in the current file |
+| `[[id:6f1c…]]` | The headline with that `:ID:`, in the current buffer or any agenda file |
+| `https://…`, `mailto:…`, other schemes | Handed to the system opener (`xdg-open`, `open`, `start`) |
+
+Following a link from a buffer with unsaved changes keeps that buffer (hidden);
+`<C-o>` jumps back.
 
 ---
 

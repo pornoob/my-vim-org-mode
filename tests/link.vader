@@ -1,0 +1,86 @@
+" Following links: file (with ::search), bare paths, internal and id:.
+
+Before:
+  let g:ln_dir = tempname()
+  call mkdir(g:ln_dir . '/sub', 'p')
+  call writefile(['#+TITLE: t', '* Intro', '* TODO [#A] Horas no pagadas :work:',
+        \ 'text', '* Other', ':PROPERTIES:', ':CUSTOM_ID: other', ':END:', 'needle here'],
+        \ g:ln_dir . '/target.org')
+  call writefile(['* Elsewhere', ':PROPERTIES:', ':ID:       abc-123', ':END:'],
+        \ g:ln_dir . '/sub/ids.org')
+  let g:ln_src = g:ln_dir . '/src.org'
+
+After:
+  enew!
+  for b in filter(range(1, bufnr('$')), 'bufname(v:val) =~# "^" . g:ln_dir')
+    execute 'silent! bwipeout! ' . b
+  endfor
+  call delete(g:ln_dir, 'rf')
+  let g:org_agenda_files = []
+
+Execute (helper):
+  " Put {line} in src.org, follow the link under the cursor (on its first
+  " '[[') and return [file name, line] where we land.
+  function! Follow(line) abort
+    call writefile([a:line], g:ln_src)
+    execute 'edit! ' . fnameescape(g:ln_src)
+    call cursor(1, stridx(a:line, '[[') + 3)
+    call org#link#open()
+    return [expand('%:t'), line('.')]
+  endfunction
+
+Execute (file: with ~ opens the file; this was broken on Linux):
+  let home = $HOME
+  let $HOME = g:ln_dir
+  AssertEqual ['target.org', 1], Follow('see [[file:~/target.org][t]]')
+  let $HOME = home
+
+Execute (file: relative to the current file, with ::*Heading):
+  AssertEqual ['target.org', 3], Follow('[[file:target.org::*Horas no pagadas]]')
+
+Execute (file: ::line number, ::#custom-id and ::text):
+  AssertEqual ['target.org', 4], Follow('[[file:./target.org::4]]')
+  AssertEqual ['target.org', 5], Follow('[[file:target.org::#other]]')
+  AssertEqual ['target.org', 9], Follow('[[file:target.org::needle]]')
+
+Execute (a bare path is a file link):
+  AssertEqual ['target.org', 3], Follow('[[./target.org::*Horas no pagadas][x]]')
+  AssertEqual ['ids.org', 1], Follow('[[' . g:ln_dir . '/sub/ids.org]]')
+
+Execute (internal [[*Heading]] and [[#custom-id]] in the same file):
+  call writefile(['[[*Target]] and [[#cid]]', '* TODO Target :x:', '* B', ':PROPERTIES:',
+        \ ':CUSTOM_ID: cid', ':END:'], g:ln_src)
+  execute 'edit! ' . fnameescape(g:ln_src)
+  call cursor(1, 4)
+  call org#link#open()
+  AssertEqual 2, line('.')
+  call cursor(1, 20)
+  call org#link#open()
+  AssertEqual 3, line('.')
+
+Execute (id: found through the agenda files):
+  let g:org_agenda_files = [g:ln_dir]
+  AssertEqual ['ids.org', 1], Follow('[[id:abc-123][there]]')
+
+Execute (id: in the current buffer, even when it is not an agenda file):
+  call writefile(['[[id:local-1]]', '* Here', ':PROPERTIES:', ':ID:       local-1', ':END:'], g:ln_src)
+  execute 'edit! ' . fnameescape(g:ln_src)
+  call cursor(1, 4)
+  call org#link#open()
+  AssertEqual 2, line('.')
+
+Execute (cursor outside any link, or a missing target: stay put):
+  AssertEqual ['src.org', 1], Follow('text [[*Nowhere]]')
+  call cursor(1, 1)
+  call org#link#open()
+  AssertEqual 'src.org', expand('%:t')
+
+Execute (a link in a buffer with unsaved changes still opens):
+  call writefile(['[[file:target.org::*Intro]]'], g:ln_src)
+  execute 'edit! ' . fnameescape(g:ln_src)
+  call append(1, 'unsaved')
+  call cursor(1, 3)
+  call org#link#open()
+  AssertEqual ['target.org', 2], [expand('%:t'), line('.')]
+  execute 'buffer ' . fnameescape(g:ln_src)
+  AssertEqual 'unsaved', getline(2)

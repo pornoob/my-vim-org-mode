@@ -375,3 +375,16 @@ function! org#core#file_entry(lines, heading, entry) abort
 
   return lines[: insert_at - 1] + org#core#set_level(a:entry, level + 1) + lines[insert_at :]
 endfunction
+
+" Headline {text} (what follows the stars) without its TODO keyword, priority
+" cookie and tags: the title Emacs uses in outline paths and [[*Title]] links.
+function! org#core#headline_title(text) abort
+  let t   = a:text
+  let kws = org#core#keywords().all
+  if !empty(kws)
+    let t = substitute(t, '^\C\%(' . join(map(copy(kws), 'escape(v:val, "\\")'), '\|') . '\)\s\+', '', '')
+  endif
+  let t = substitute(t, '^\[#.\]\s*', '', '')
+  let t = substitute(t, '\s\+' . org#core#tags_pattern(), '', '')
+  return trim(t)
+endfunction
