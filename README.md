@@ -182,7 +182,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}:` | Normal | Edit tags on current headline (comma-separated, with completion; any letter works, `:VEHÍCULOS:` included; an empty answer cancels, so delete the last tags by hand) |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
 | `{leader}$` | Normal | Archive subtree to `*.org_archive` |
-| `{leader}C` | Normal | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`) |
+| `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
 | `<Tab>` | Normal | Toggle fold on headline |
@@ -528,7 +528,8 @@ group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last).
 
 `{leader}C` (or `:OrgCapture`) opens a scratch buffer pre-filled from a template,
 from any filetype. With one template it opens directly; with several, a one-key
-picker is shown (`q` / `Esc` cancels).
+picker is shown (`q` / `Esc` cancels). In visual mode, `{leader}C` (or
+`:'<,'>OrgCapture`) also hands the selection to the template's `%i`.
 
 ### Configuration
 
@@ -536,10 +537,10 @@ picker is shown (`q` / `Esc` cancels).
 let g:org_capture_templates = [
   \ {'key': 't', 'desc': 'Task',
   \  'template': "* TODO %?\n  %t",
-  \  'file': expand('~/org/inbox.org'), 'headline': 'Inbox'},
+  \  'file': '~/org/inbox.org', 'headline': 'Inbox'},
   \ {'key': 'n', 'desc': 'Note from selection',
   \  'template': "* %?\n  %t  from [[file:%f]]\n\n%i",
-  \  'file': expand('~/org/notes.org')},
+  \  'file': '~/org/notes.org'},
   \ ]
 ```
 
@@ -548,7 +549,7 @@ let g:org_capture_templates = [
 | `key` | yes | Single key in the picker |
 | `desc` | yes | Label in the picker |
 | `template` | yes | Text of the entry; use `\n` for new lines |
-| `file` | yes | Target file. `~` is **not** expanded — wrap it in `expand()` |
+| `file` | yes | Target file (`~` and `$VARS` are expanded) |
 | `headline` | no | Level-1 headline (`* Inbox`) to file the entry under |
 
 ### Template placeholders
@@ -559,7 +560,7 @@ let g:org_capture_templates = [
 | `%t` | Inactive timestamp with time, `[2026-07-09 Wed 10:30]` |
 | `%f` | Full path of the buffer capture was started from |
 | `%F` | File name only of that buffer |
-| `%i` | Last visual selection (empty if none) |
+| `%i` | The selection capture was started on (visual `{leader}C`); empty otherwise |
 | `%?` | Cursor position after expansion (first occurrence only) |
 
 ### Finishing
@@ -571,11 +572,12 @@ let g:org_capture_templates = [
 
 Where the entry lands:
 
-- With `headline` and the headline exists → directly under that headline.
-- With `headline` and the file is new/empty → the file is created with that headline.
-- With `headline` but the headline is missing from an existing file → appended at the
-  end of the file (the headline is **not** created).
-- Without `headline` → appended at the end of the file.
+- With `headline` → as the **last child** of that level-1 headline, after its
+  existing entries and their bodies. The entry's headlines are demoted so it sits
+  one level below (`* TODO x` becomes `** TODO x`; sub-headlines keep their depth).
+- With `headline` but the headline is missing (or the file does not exist yet) → the
+  headline is created at the end of the file, as Emacs does.
+- Without `headline` → appended at the end of the file, levels untouched.
 
 ---
 

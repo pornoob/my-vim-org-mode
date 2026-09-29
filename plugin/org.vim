@@ -19,7 +19,8 @@ command! OrgOpenLink       call org#link#open()
 command! OrgTags           call org#tags#edit()
 command! OrgSetID          call org#id#set()
 command! OrgArchive        call org#archive#subtree()
-command! OrgCapture        call org#capture#open()
+" With a range (:'<,'>OrgCapture, or {leader}C in visual mode) the selection fills %i
+command! -range OrgCapture call org#capture#open(<range> > 0)
 command! OrgClockReport    call org#clockreport#update()
 command! OrgCtrlC          call org#dispatch#ctrl_c()
 
@@ -69,7 +70,10 @@ augroup org_block_bg
 augroup END
 
 " ── Global mappings (not buffer-local — capture works from any filetype) ──────
+let s:cap_l = get(g:, 'org_leader', '\')
 if !hasmapto('OrgCapture', 'n')
-  let s:cap_l = get(g:, 'org_leader', '\')
   execute 'nnoremap <silent> ' . s:cap_l . 'C  :OrgCapture<CR>'
+endif
+if !hasmapto('OrgCapture', 'x')
+  execute 'xnoremap <silent> ' . s:cap_l . 'C  :OrgCapture<CR>'
 endif

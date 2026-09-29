@@ -1,0 +1,112 @@
+" Capture: template expansion, the capture window and where entries land.
+
+Before:
+  let g:cap_file = tempname() . '.org'
+  let g:org_capture_templates = [
+        \ {'key': 't', 'desc': 'Task', 'template': "* TODO %?\n  %t",
+        \  'file': g:cap_file, 'headline': 'Inbox'}]
+
+After:
+  call delete(g:cap_file)
+  unlet! g:org_capture_templates
+
+" Open the capture window from a scratch buffer, replace its text with
+" {lines} and file it.
+Execute (helper):
+  function! CaptureLines(lines) abort
+    call org#capture#open()
+    silent %delete _
+    call setline(1, a:lines)
+    call org#capture#finalize()
+  endfunction
+
+" ── The capture window ────────────────────────────────────────────────────────
+
+Execute (one template opens directly, expanded, cursor at %?):
+  enew!
+  call org#capture#open()
+  AssertEqual 'org', &filetype
+  AssertEqual ['* TODO ', '  ' . Now()], getline(1, '$')
+  " %? is at the end of '* TODO ': normal mode clamps to the last column
+  AssertEqual [1, 7], [line('.'), col('.')]
+  call org#capture#abort()
+  AssertEqual 0, filereadable(g:cap_file)
+
+Execute (several templates: picked with one key; q cancels):
+  let g:org_capture_templates += [{'key': 'n', 'desc': 'Note',
+        \ 'template': "* %F %?", 'file': g:cap_file}]
+  let src = tempname() . '.txt'
+  execute 'edit ' . src
+  call feedkeys('n', 't')
+  call org#capture#open()
+  AssertEqual ['* ' . fnamemodify(src, ':t') . ' '], getline(1, '$')
+  call org#capture#abort()
+  let wins = winnr('$')
+  call feedkeys('q', 't')
+  call org#capture#open()
+  AssertEqual wins, winnr('$')
+  bwipeout!
+
+Execute (%i is the selection only when capture starts from visual mode):
+  let g:org_capture_templates[0].template = "* %?\n%i"
+  enew!
+  call setline(1, ['old selected text'])
+  normal! V
+  execute "normal! \<Esc>"
+  call org#capture#open()
+  AssertEqual ['* ', ''], getline(1, '$')
+  call org#capture#abort()
+  call org#capture#open(1)
+  AssertEqual ['* ', 'old selected text'], getline(1, '$')
+  call org#capture#abort()
+
+" ── Where the entry lands ─────────────────────────────────────────────────────
+
+Execute (new file: created with the headline, entry demoted under it):
+  call CaptureLines(['* TODO First'])
+  AssertEqual ['* Inbox', '** TODO First'], readfile(g:cap_file)
+
+Execute (existing headline: last child, after the previous item's body):
+  call writefile(['#+TITLE: x', '* Inbox', '** TODO Old', '   body of old', '* Other', 'text'], g:cap_file)
+  call CaptureLines(['* TODO New', '  note'])
+  AssertEqual ['#+TITLE: x', '* Inbox', '** TODO Old', '   body of old',
+        \ '** TODO New', '  note', '* Other', 'text'], readfile(g:cap_file)
+
+Execute (headline at the end of the file):
+  call writefile(['* Other', '* Inbox', '** TODO Old'], g:cap_file)
+  call CaptureLines(['* TODO New'])
+  AssertEqual ['* Other', '* Inbox', '** TODO Old', '** TODO New'], readfile(g:cap_file)
+
+Execute (missing headline is created at the end, as Emacs does):
+  call writefile(['* Other', 'text'], g:cap_file)
+  call CaptureLines(['* TODO New'])
+  AssertEqual ['* Other', 'text', '* Inbox', '** TODO New'], readfile(g:cap_file)
+
+Execute (sub-headlines keep their relative depth):
+  call CaptureLines(['* Project', '** Step'])
+  AssertEqual ['* Inbox', '** Project', '*** Step'], readfile(g:cap_file)
+
+Execute (no headline: appended at the end, levels untouched):
+  let g:org_capture_templates[0].headline = ''
+  call writefile(['* A'], g:cap_file)
+  call CaptureLines(['* TODO New'])
+  AssertEqual ['* A', '* TODO New'], readfile(g:cap_file)
+
+Execute (~ in the file path is expanded):
+  let home = $HOME
+  let $HOME = fnamemodify(g:cap_file, ':h')
+  let g:org_capture_templates[0].file = '~/' . fnamemodify(g:cap_file, ':t')
+  call CaptureLines(['* TODO Home'])
+  let $HOME = home
+  AssertEqual ['* Inbox', '** TODO Home'], readfile(g:cap_file)
+
+Execute (visual {leader}C passes the selection to %i):
+  let g:org_capture_templates[0].template = "* %?\n%i"
+  enew!
+  call setline(1, ['alpha', 'beta'])
+  execute "normal Vj\\C"
+  AssertEqual ['* ', 'alpha', 'beta'], getline(1, '$')
+  call org#capture#abort()
+  execute "normal \\C"
+  AssertEqual ['* ', ''], getline(1, '$')
+  call org#capture#abort()
