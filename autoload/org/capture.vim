@@ -90,44 +90,13 @@ function! org#capture#finalize() abort
   endif
 
   let existing = filereadable(target) ? readfile(target) : []
-  call writefile(s:file_entry(existing, getline(1, '$'),
-        \ get(b:, 'org_capture_headline', '')), target)
+  let headline = get(b:, 'org_capture_headline', '')
+  call writefile(headline ==# ''
+        \ ? existing + getline(1, '$')
+        \ : org#core#file_entry(existing, '* ' . headline, getline(1, '$')), target)
 
   echo 'Captured to: ' . target
   bwipeout!
-endfunction
-
-" Return {existing} (the target file's lines) with {entry} filed the way
-" Emacs' file+headline target does: as the last child of the level-1
-" {headline}, which is created at the end of the file when missing, with the
-" entry's headlines demoted to sit one level below it. Without a headline
-" the entry is appended as is.
-function! s:file_entry(existing, entry, headline) abort
-  if a:headline ==# ''
-    return a:existing + a:entry
-  endif
-
-  let lines = copy(a:existing)
-  let hl_idx = index(lines, '* ' . a:headline)
-  if hl_idx < 0
-    call add(lines, '* ' . a:headline)
-    let hl_idx = len(lines) - 1
-  endif
-
-  " End of the headline's subtree: the next level-1 headline, or EOF
-  let insert_at = hl_idx + 1
-  while insert_at < len(lines) && lines[insert_at] !~# '^\* '
-    let insert_at += 1
-  endwhile
-
-  " Shift the entry so its shallowest headline becomes level 2
-  let levels = map(filter(copy(a:entry), {_, l -> l =~# '^\*\+ '}),
-        \ {_, l -> len(matchstr(l, '^\*\+'))})
-  let shift = empty(levels) ? 0 : max([0, 2 - min(levels)])
-  let entry = map(copy(a:entry),
-        \ {_, l -> l =~# '^\*\+ ' ? repeat('*', shift) . l : l})
-
-  return lines[: insert_at - 1] + entry + lines[insert_at :]
 endfunction
 
 function! org#capture#abort() abort

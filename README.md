@@ -29,6 +29,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Specific times](#specific-times)
   - [Text-prompt fallback](#text-prompt-fallback)
   - [Reschedule logging](#reschedule-logging)
+- [Archiving](#archiving)
 - [Promote and Demote](#promote-and-demote)
 - [Checkboxes](#checkboxes)
 - [Commands](#commands)
@@ -181,7 +182,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader};` | Normal | Cycle priority backward |
 | `{leader}:` | Normal | Edit tags on current headline (comma-separated, with completion; any letter works, `:VEHÍCULOS:` included; an empty answer cancels, so delete the last tags by hand) |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
-| `{leader}$` | Normal | Archive subtree to `*.org_archive` |
+| `{leader}$` | Normal | [Archive](#archiving) subtree to `*.org_archive` |
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
@@ -669,6 +670,42 @@ recorded in the headline's `:LOGBOOK:` drawer automatically:
 
 A `:LOGBOOK:` drawer is created if one does not already exist.
 No note is written when a date is set for the first time.
+
+---
+
+## Archiving
+
+`{leader}$` (or `:OrgArchive`) moves the subtree under the cursor out of the file,
+as Emacs' `org-archive-subtree` does with its default settings. By default it goes
+to the end of `notes.org_archive` next to `notes.org`, re-levelled to a top-level
+entry, with its context recorded in `:PROPERTIES:`:
+
+```org
+* DONE Ship it :deploy:
+  CLOSED: [2026-09-01 Tue 10:00]
+  :PROPERTIES:
+  :ARCHIVE_TIME: 2026-09-29 Tue 19:05
+  :ARCHIVE_FILE: ~/org/notes.org
+  :ARCHIVE_OLPATH: Projects/Web
+  :ARCHIVE_CATEGORY: notes
+  :ARCHIVE_TODO: DONE
+  :END:
+```
+
+- A new archive file starts with an `Archived entries from file …` line.
+- `ARCHIVE_OLPATH` (the parent headlines) and `ARCHIVE_TODO` are left out when empty;
+  `ARCHIVE_CATEGORY` is the file's `#+CATEGORY:` or its name.
+- The source buffer is modified, not saved.
+
+`g:org_archive_location` takes Emacs' `FILE::HEADING` syntax:
+
+| Value | Archives to |
+|---|---|
+| `'%s_archive::'` (default) | `notes.org_archive`, top level |
+| `'~/org/archive.org::* From notes'` | Under `* From notes` in that file (created if missing) |
+| `'::* Archive'` | Under `* Archive` in the same file |
+
+`%s` is the current file's full path.
 
 ---
 

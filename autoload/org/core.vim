@@ -338,3 +338,40 @@ endfunction
 function! org#core#tags_pattern() abort
   return ':\%(' . org#core#tag_char() . '\+:\)\+\s*$'
 endfunction
+
+" Return {entry} (a subtree's lines) with every headline shifted so the
+" shallowest one sits at {level}; lines that are not headlines are kept.
+function! org#core#set_level(entry, level) abort
+  let levels = map(filter(copy(a:entry), {_, l -> l =~# '^\*\+ '}),
+        \ {_, l -> len(matchstr(l, '^\*\+'))})
+  if empty(levels)
+    return copy(a:entry)
+  endif
+  let shift = a:level - min(levels)
+  return map(copy(a:entry), {_, l -> l !~# '^\*\+ ' ? l
+        \ : repeat('*', len(matchstr(l, '^\*\+')) + shift) . matchstr(l, '^\*\+\zs.*')})
+endfunction
+
+" Return {lines} (a file's lines) with {entry} filed as the last child of the
+" headline {heading}, a whole line such as '* Inbox': at the end of that
+" subtree, re-levelled to sit one level below it. A missing {heading} is
+" appended at the end first. This is what Emacs does for capture's
+" file+headline target and for an archive location with a heading.
+function! org#core#file_entry(lines, heading, entry) abort
+  let lines = copy(a:lines)
+  let level = len(matchstr(a:heading, '^\*\+'))
+  let hl_idx = index(lines, a:heading)
+  if hl_idx < 0
+    call add(lines, a:heading)
+    let hl_idx = len(lines) - 1
+  endif
+
+  " End of the heading's subtree: the next headline of its level or higher
+  let insert_at = hl_idx + 1
+  while insert_at < len(lines)
+        \ && !(lines[insert_at] =~# '^\*\+ ' && len(matchstr(lines[insert_at], '^\*\+')) <= level)
+    let insert_at += 1
+  endwhile
+
+  return lines[: insert_at - 1] + org#core#set_level(a:entry, level + 1) + lines[insert_at :]
+endfunction

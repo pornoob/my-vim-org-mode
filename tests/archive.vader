@@ -1,0 +1,79 @@
+" Archiving subtrees the way Emacs' org-archive-subtree does by default.
+
+Before:
+  unlet! g:org_archive_location
+  let g:arc_src = tempname() . '/notes.org'
+  call mkdir(fnamemodify(g:arc_src, ':h'), 'p')
+
+After:
+  silent! execute 'bwipeout! ' . fnameescape(g:arc_src)
+  call delete(fnamemodify(g:arc_src, ':h'), 'rf')
+  unlet! g:org_archive_location
+
+Execute (helper):
+  " Open {lines} as notes.org, archive the subtree on {lnum}, return the
+  " archive file's lines.
+  function! ArchiveAt(lines, lnum) abort
+    call writefile(a:lines, g:arc_src)
+    execute 'edit! ' . fnameescape(g:arc_src)
+    call cursor(a:lnum, 1)
+    call org#archive#subtree()
+    let afile = g:arc_src . '_archive'
+    return filereadable(afile) ? readfile(afile) : []
+  endfunction
+
+  function! Stamp() abort
+    return strftime('%Y-%m-%d %a %H:%M')
+  endfunction
+
+Execute (new archive file: header, subtree at level 1, context properties):
+  let got = ArchiveAt(['#+CATEGORY: work', '* Projects', '** Web', '*** DONE [#A] Ship it :deploy:',
+        \ '    CLOSED: [2026-09-01 mar 10:00]', '    body', '**** Notes', '** Other'], 4)
+  AssertEqual ['', 'Archived entries from file ' . g:arc_src, '',
+        \ '* DONE [#A] Ship it :deploy:',
+        \ '    CLOSED: [2026-09-01 mar 10:00]',
+        \ '    :PROPERTIES:',
+        \ '    :ARCHIVE_TIME: ' . Stamp(),
+        \ '    :ARCHIVE_FILE: ' . fnamemodify(g:arc_src, ':~'),
+        \ '    :ARCHIVE_OLPATH: Projects/Web',
+        \ '    :ARCHIVE_CATEGORY: work',
+        \ '    :ARCHIVE_TODO: DONE',
+        \ '    :END:',
+        \ '    body',
+        \ '** Notes'], got
+  AssertEqual ['#+CATEGORY: work', '* Projects', '** Web', '** Other'], getline(1, '$')
+
+Execute (existing archive: appended at the end; existing drawer reused):
+  call writefile(['', 'Archived entries from file x', '', '* DONE Old'], g:arc_src . '_archive')
+  let got = ArchiveAt(['* Task', ':PROPERTIES:', ':ID:       abc', ':END:', '* Keep'], 1)
+  AssertEqual ['', 'Archived entries from file x', '', '* DONE Old', '* Task', ':PROPERTIES:',
+        \ ':ID:       abc', ':ARCHIVE_TIME: ' . Stamp(),
+        \ ':ARCHIVE_FILE: ' . fnamemodify(g:arc_src, ':~'),
+        \ ':ARCHIVE_CATEGORY: notes', ':END:'], got
+  AssertEqual ['* Keep'], getline(1, '$')
+
+Execute (body text of the cursor's entry archives its headline):
+  let got = ArchiveAt(['* A', '* B', 'text of b', '* C'], 3)
+  AssertEqual '* B', got[3]
+  AssertEqual ['* A', '* C'], getline(1, '$')
+
+Execute (location with a heading in another file):
+  let g:org_archive_location = fnamemodify(g:arc_src, ':h') . '/all.org::* From notes'
+  call ArchiveAt(['* TODO Task', '* Keep'], 1)
+  let got = readfile(fnamemodify(g:arc_src, ':h') . '/all.org')
+  AssertEqual ['', 'Archived entries from file ' . g:arc_src, '', '* From notes', '** TODO Task'], got[0:4]
+  AssertEqual ':ARCHIVE_TODO: TODO', got[-2]
+
+Execute (location '::* Archive' archives inside the same file):
+  let g:org_archive_location = '::* Archive'
+  let got = ArchiveAt(['* Work', '** DONE Old', '* Archive', '** DONE Older', '* Last'], 2)
+  AssertEqual [], got
+  AssertEqual ['* Work', '* Archive', '** DONE Older', '** DONE Old', ':PROPERTIES:'], getline(1, 5)
+  AssertEqual '* Last', getline('$')
+
+Execute (not on a headline: nothing happens):
+  call writefile(['intro'], g:arc_src)
+  execute 'edit! ' . fnameescape(g:arc_src)
+  call org#archive#subtree()
+  AssertEqual ['intro'], getline(1, '$')
+  AssertEqual 0, filereadable(g:arc_src . '_archive')

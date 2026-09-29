@@ -1,5 +1,8 @@
-" autoload/org/archive.vim — Archive subtree to .org_archive
+" autoload/org/archive.vim — Archive subtree, the way Emacs' org-archive-subtree
+" does with its default settings.
 
+" Move the subtree at the cursor to the archive location, stamped with the
+" ARCHIVE_* context properties.
 function! org#archive#subtree() abort
   let hl = org#core#current_headline()
   if empty(hl)
@@ -7,43 +10,44 @@ function! org#archive#subtree() abort
     return
   endif
 
-  let archive_file = s:archive_path()
-  let subtree_end  = s:find_subtree_end(hl.lnum)
-  if subtree_end < 0
-    return
-  endif
+  let [afile, heading] = s:location()
+  let last  = s:subtree_end(hl.lnum, hl.level)
+  let entry = s:with_context(hl, getline(hl.lnum, last))
 
-  let lines = getline(hl.lnum, subtree_end)
-  let headers = s:build_archive_headers()
-
-  let existing = filereadable(archive_file) ? readfile(archive_file) : []
-
-  if empty(existing)
-    let result = headers + [''] + lines
+  if afile ==# expand('%:p')
+    " Archiving into this same file (location '::* Heading')
+    execute 'silent' hl.lnum . ',' . last . 'delete _'
+    let lines = org#core#file_entry(getline(1, '$'), heading, entry)
+    silent %delete _
+    call setline(1, lines)
   else
-    let date_idx = s:find_or_create_month_entry(existing, headers)
-    let result = existing[:date_idx] + [''] + lines + existing[date_idx+1 :]
+    let existing = filereadable(afile) ? readfile(afile)
+          \ : ['', 'Archived entries from file ' . expand('%:p'), '']
+    call writefile(heading ==# ''
+          \ ? existing + org#core#set_level(entry, 1)
+          \ : org#core#file_entry(existing, heading, entry), afile)
+    execute 'silent' hl.lnum . ',' . last . 'delete _'
   endif
-
-  call writefile(result, archive_file)
-  execute 'delete' (subtree_end - hl.lnum + 1)
-  echohl WarningMsg | echo 'Archived to: ' . archive_file | echohl None
+  echo 'Archived to: ' . fnamemodify(afile, ':~') . (heading ==# '' ? '' : ' under ' . heading)
 endfunction
 
-function! s:archive_path() abort
-  let loc = get(g:, 'org_archive_location', '')
-  if loc !=# ''
-    return substitute(loc, '%s', expand('%:p:r'), '')
-  endif
-  return expand('%:p:r') . '.org_archive'
+" [archive file, heading] from g:org_archive_location, in Emacs' syntax
+" 'FILE::HEADING': %s in FILE is the current file name, an empty FILE means
+" the current file, and an empty HEADING appends at top level.
+" Default '%s_archive::' → 'notes.org_archive'.
+function! s:location() abort
+  let loc   = get(g:, 'org_archive_location', '%s_archive::')
+  let parts = split(loc, '::', 1)
+  let file  = substitute(parts[0], '%s', escape(expand('%:p'), '\&'), 'g')
+  let file  = file ==# '' ? expand('%:p') : fnamemodify(expand(file), ':p')
+  return [file, trim(get(parts, 1, ''))]
 endfunction
 
-function! s:find_subtree_end(headline_lnum) abort
-  let level = len(matchstr(getline(a:headline_lnum), '^\*\+'))
-  let lnum  = a:headline_lnum + 1
+function! s:subtree_end(lnum, level) abort
+  let lnum = a:lnum + 1
   while lnum <= line('$')
-    let m = matchstr(getline(lnum), '^\*\+')
-    if len(m) > 0 && len(m) <= level
+    let stars = matchstr(getline(lnum), '^\*\+\ze\s')
+    if !empty(stars) && len(stars) <= a:level
       return lnum - 1
     endif
     let lnum += 1
@@ -51,45 +55,76 @@ function! s:find_subtree_end(headline_lnum) abort
   return line('$')
 endfunction
 
-function! s:build_archive_headers() abort
-  let now = localtime()
-  let ym = strftime('%Y-%m', now)
-  let day = strftime('%Y-%m-%d %a', now)
-  return ['* Archived tasks :ARCHIVE:', '** ' . ym]
+" Return the subtree {lines} with ARCHIVE_TIME, ARCHIVE_FILE, ARCHIVE_OLPATH,
+" ARCHIVE_CATEGORY and ARCHIVE_TODO added to its :PROPERTIES: drawer. The
+" drawer is edited in a scratch buffer so org#core#set_property's placement
+" rules apply unchanged.
+function! s:with_context(hl, lines) abort
+  let props = [
+        \ ['ARCHIVE_TIME',     strftime('%Y-%m-%d %a %H:%M')],
+        \ ['ARCHIVE_FILE',     fnamemodify(expand('%:p'), ':~')],
+        \ ['ARCHIVE_OLPATH',   s:olpath(a:hl)],
+        \ ['ARCHIVE_CATEGORY', s:category()],
+        \ ['ARCHIVE_TODO',     s:todo(a:lines[0])],
+        \ ]
+
+  noautocmd silent new
+  setlocal buftype=nofile bufhidden=wipe noswapfile
+  call setline(1, a:lines)
+  for [key, value] in props
+    if value !=# ''
+      call org#core#set_property(1, key, value)
+    endif
+  endfor
+  let result = getline(1, '$')
+  noautocmd silent close
+  return result
 endfunction
 
-function! s:find_or_create_month_entry(lines, headers) abort
-  let top = a:headers[0]
-  let month_h = a:headers[1]
-
-  let top_idx = -1
-  for i in range(len(a:lines))
-    if a:lines[i] ==# top
-      let top_idx = i
-      break
+" Titles of the ancestors of {hl}, outermost first, joined with '/'.
+function! s:olpath(hl) abort
+  let path  = []
+  let level = a:hl.level
+  let lnum  = a:hl.lnum - 1
+  while lnum > 0 && level > 1
+    let m = matchlist(getline(lnum), '^\(\*\+\)\s\+\(.*\)$')
+    if !empty(m) && len(m[1]) < level
+      call insert(path, s:title(m[2]))
+      let level = len(m[1])
     endif
-  endfor
+    let lnum -= 1
+  endwhile
+  return join(path, '/')
+endfunction
 
-  if top_idx < 0
-    call extend(a:lines, ['', top, '', month_h])
-    return len(a:lines) - 1
+" Headline text without keyword, priority or tags.
+function! s:title(text) abort
+  let t   = a:text
+  let kws = org#core#keywords().all
+  if !empty(kws)
+    let t = substitute(t, '^\C\%(' . join(map(copy(kws), 'escape(v:val, "\\")'), '\|') . '\)\s\+', '', '')
   endif
+  let t = substitute(t, '^\[#.\]\s*', '', '')
+  let t = substitute(t, '\s\+' . org#core#tags_pattern(), '', '')
+  return trim(t)
+endfunction
 
-  for i in range(top_idx + 1, len(a:lines) - 1)
-    if a:lines[i] ==# month_h
-      return i
-    endif
-    if a:lines[i] =~# '^\*\{2,} ' && a:lines[i] ># month_h
-      call insert(a:lines, month_h, i)
-      return i
-    endif
-    if a:lines[i] =~# '^\* '
-      call insert(a:lines, month_h, i)
-      return i
+" #+CATEGORY of the file, or its name without extension.
+function! s:category() abort
+  for lnum in range(1, min([line('$'), 200]))
+    let m = matchstr(getline(lnum), '^\c#+CATEGORY:\s*\zs.*')
+    if m !=# ''
+      return trim(m)
     endif
   endfor
+  return expand('%:t:r')
+endfunction
 
-  call add(a:lines, '')
-  call add(a:lines, month_h)
-  return len(a:lines) - 1
+function! s:todo(headline) abort
+  for kw in org#core#keywords().all
+    if a:headline =~# '^\*\+\s\+\V' . escape(kw, '\') . '\m\%(\s\|$\)'
+      return kw
+    endif
+  endfor
+  return ''
 endfunction
