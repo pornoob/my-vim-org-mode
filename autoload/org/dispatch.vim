@@ -18,6 +18,12 @@ function! org#dispatch#ctrl_c() abort
   let lnum = line('.')
   let l    = getline(lnum)
 
+  " Sparse-tree highlights showing → just remove them, as Emacs does
+  if org#sparse#clear()
+    echo 'org: sparse tree highlights cleared'
+    return
+  endif
+
   " Closed CLOCK entry → recalculate its duration
   if l =~# '^\s*CLOCK:\s*\[.\{-}\]--\[.\{-}\]'
     call org#clock#update()

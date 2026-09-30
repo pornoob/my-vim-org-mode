@@ -61,6 +61,9 @@ function! org#highlight#apply() abort
   highlight orgCheckboxSummary ctermfg=108 cterm=NONE guifg=#8ec07c gui=NONE
   highlight link orgHRule      NonText
 
+  " Sparse tree matches
+  highlight link orgSparseMatch Search
+
   " Tables
   highlight orgTableSep   ctermfg=242 guifg=#665c54
   highlight link orgTableHline orgTableSep

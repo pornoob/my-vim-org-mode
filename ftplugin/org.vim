@@ -87,6 +87,7 @@ execute 'nnoremap <buffer> <silent> ' . s:l . 'w  :OrgRefile<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
 execute 'xnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'L  :OrgStoreLink<CR>'
+execute 'nnoremap <buffer> <silent> ' . s:l . '/  :OrgSparseTree<CR>'
 
 " ── Highlight groups (applied here so they survive colorscheme reloads) ───────
 " Syntax/org.vim sets them first; this re-applies unconditionally so that a
@@ -136,4 +137,5 @@ let b:undo_ftplugin =
   \ . '| silent! nunmap <buffer> ' . s:l . 'l'
   \ . '| silent! xunmap <buffer> ' . s:l . 'l'
   \ . '| silent! nunmap <buffer> ' . s:l . 'L'
+  \ . '| silent! nunmap <buffer> ' . s:l . '/'
   \ . '| call org#fold#clear_hl()'

@@ -39,6 +39,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
 - [Syntax Highlighting](#syntax-highlighting)
 - [Code Blocks](#code-blocks)
 - [Folding](#folding)
+  - [Sparse trees](#sparse-trees)
 - [Keeping Your Config Safe](#keeping-your-config-safe)
 - [File Layout](#file-layout)
 - [Running Tests](#running-tests)
@@ -193,6 +194,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
+| `{leader}/` | Normal | [Sparse tree](#sparse-trees): fold all but the matches of a regexp, TODO entries or a tag |
 | `<Tab>` | Normal | Toggle fold on headline; on a [table](#tables), align and go to the next field |
 | `<S-Tab>` | Normal | Cycle global fold: OVERVIEW → CONTENTS → SHOW ALL; on a table, previous field |
 | `<Tab>` / `<S-Tab>` | Insert | On a table, next / previous field; elsewhere whatever they did before (a completion plugin's accept, or a plain Tab) |
@@ -332,6 +334,7 @@ line under the cursor and does whatever update makes sense there.
 
 | Cursor on | Action |
 |---|---|
+| Anywhere, while [sparse-tree](#sparse-trees) highlights show | Remove the highlights (nothing else) |
 | Closed `CLOCK:` line (`[…]--[…]`) | Recalculate its `=>` duration |
 | Open (running) `CLOCK:` line | Clock out |
 | Checkbox list item | Toggle it and refresh parent `[n/m]` / `[%]` summaries |
@@ -944,6 +947,7 @@ content lines are left untouched.
 | `:OrgToggleLinkDisplay` | Show links raw / as descriptions |
 | `:OrgArchive` | Archive current subtree to `*.org_archive` |
 | `:OrgRefile` | Refile current subtree under another headline |
+| `:OrgSparseTree [r\|t\|m]` | Sparse tree by regexp, TODO entries or tag |
 | `:OrgCapture` | Open capture template for quick entry |
 | `:OrgReload` | Reload syntax and ftplugin for the current buffer, or refresh the agenda |
 
@@ -1061,6 +1065,23 @@ Use it to quickly collapse the whole file to headlines-only and expand back with
 `<Tab>` on a **headline**, `#+BEGIN_*` line, or drawer opening line (`:PROPERTIES:`, `:LOGBOOK:`) toggles that fold open/closed.
 `<Tab>` on any other line sends a normal `>>` indent.
 
+### Sparse trees
+
+`{leader}/` (or `:OrgSparseTree`) folds the file down to what matches, like Emacs'
+`C-c /`. It asks for a kind:
+
+| Key | Shows |
+|---|---|
+| `r` | Lines matching a regexp (a **Vim** regexp, following `'ignorecase'` like `/`) |
+| `t` | Headlines in an active TODO state (the file's `#+SEQ_TODO`, or the global list) |
+| `m` | Headlines carrying a tag (one tag, e.g. `VEHÍCULOS`; completes known tags) |
+
+Everything is folded first (`zM`), then each match is revealed with its parent
+headlines, so top-level headlines stay visible as closed folds, as in Emacs. The
+matches are highlighted (`orgSparseMatch`, linked to `Search`) and become the search
+pattern, so `n` / `N` jump between them. `<C-c><C-c>` removes the highlights;
+`zR` (or `{leader}f`) opens everything again.
+
 ---
 
 ## Keeping Your Config Safe
@@ -1109,6 +1130,7 @@ vim-org/
 │   ├── link.vim        – link opening ([[url]], [[file:…::search]], [[id:]], [[*H]])
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
 │   ├── refile.vim      – refile subtree under a headline (outline-path prompt)
+│   ├── sparse.vim      – sparse trees (regexp / TODO / tag)
 │   ├── table.vim       – table alignment and field motion
 │   ├── tags.vim        – tag editing
 │   └── todo.vim        – TODO cycle logic, CLOSED, state logging, repeaters

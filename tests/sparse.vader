@@ -1,0 +1,108 @@
+" Sparse trees: fold everything but the matches and their parent headlines.
+
+Execute (helper):
+  " Line numbers that stay visible: outside closed folds, or the first line
+  " of one (a closed headline still shows).
+  function! Visible() abort
+    return filter(range(1, line('$')),
+          \ 'foldclosed(v:val) == -1 || foldclosed(v:val) == v:val')
+  endfunction
+
+Given org (regexp: matches and their ancestors stay visible):
+  * Work
+  ** Meeting notes
+  talked about the budget
+  ** Other
+  nothing here
+  * Home
+  ** budget for repairs
+  * Misc
+  text
+
+Execute:
+  call feedkeys("budget\<CR>", 't')
+  call org#sparse#tree('r')
+  let v = Visible()
+  " Both budget lines, their headlines, and the top-level headlines
+  Assert index(v, 3) >= 0 && index(v, 7) >= 0, string(v)
+  Assert index(v, 1) >= 0 && index(v, 2) >= 0 && index(v, 6) >= 0, string(v)
+  AssertEqual -1, index(v, 5)
+  AssertEqual -1, index(v, 9)
+  AssertEqual 'budget', @/
+  Assert exists('w:org_sparse_match')
+
+Given org (the regexp follows 'ignorecase' like a search):
+  * a
+  Budget
+  * b
+  budget
+
+Execute:
+  set ignorecase
+  call feedkeys("budget\<CR>", 't')
+  call org#sparse#tree('r')
+  set noignorecase
+  Assert index(Visible(), 2) >= 0 && index(Visible(), 4) >= 0, string(Visible())
+
+Given org (TODO: active entries of the file's own keywords):
+  #+SEQ_TODO: NEXT TODO REPEAT | DONE
+  * Area
+  ** DONE old
+  done body
+  ** REPEAT pill
+  ** NEXT call
+  * TODOS is not a keyword
+
+Execute:
+  call org#sparse#tree('t')
+  let v = Visible()
+  Assert index(v, 5) >= 0 && index(v, 6) >= 0, string(v)
+  AssertEqual -1, index(v, 4)
+  AssertEqual 1, len(filter(copy(v), 'getline(v:val) =~# "TODOS"'))
+
+Given org (tag: headlines carrying it, anywhere in the tag block):
+  * Car :IMPORTANTE:VEHÍCULOS:
+  body
+  * Pet :MASCOTAS:
+  * Other :VEHÍCULOS_VIEJOS:
+
+Execute:
+  call feedkeys("VEHÍCULOS\<CR>", 't')
+  call org#sparse#tree('m')
+  AssertEqual 1, len(filter(range(1, line('$')), 'getline(v:val) =~ @/'))
+  Assert getline(1) =~ @/, @/
+
+Given org (the kind prompt: an unknown key does nothing):
+  * a
+  text
+
+Execute:
+  call org#sparse#clear()
+  call feedkeys('z', 't')
+  call org#sparse#tree()
+  AssertEqual [1, 2], Visible()
+  Assert !exists('w:org_sparse_match')
+
+Given org (no match: folds untouched, message only):
+  * a
+  text
+
+Execute:
+  call org#sparse#clear()
+  call feedkeys("nothing like it\<CR>", 't')
+  call org#sparse#tree('r')
+  AssertEqual [1, 2], Visible()
+
+Given org (<C-c><C-c> removes the highlights first, and does nothing else):
+  * Task
+  - [ ] item
+
+Execute:
+  call feedkeys("item\<CR>", 't')
+  call org#sparse#tree('r')
+  2
+  call org#dispatch#ctrl_c()
+  Assert !exists('w:org_sparse_match')
+  AssertEqual '- [ ] item', getline(2)
+  call org#dispatch#ctrl_c()
+  AssertEqual '- [X] item', getline(2)

@@ -23,6 +23,7 @@ command! OrgTags           call org#tags#edit()
 command! OrgSetID          call org#id#set()
 command! OrgArchive        call org#archive#subtree()
 command! OrgRefile         call org#refile#subtree()
+command! -nargs=? OrgSparseTree call org#sparse#tree(<f-args>)
 " With a range (:'<,'>OrgCapture, or {leader}C in visual mode) the selection fills %i
 command! -range OrgCapture call org#capture#open(<range> > 0)
 command! OrgClockReport    call org#clockreport#update()
