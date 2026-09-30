@@ -72,6 +72,16 @@ Execute (day: an item in the current hour is listed, with its own time):
     Assert With(lines, 'Later thing')[0] =~# printf('%02d:15', LaterHour()), With(lines, 'Later thing')[0]
   endif
 
+Execute (day: the grid widens to the current hour and to timed items outside it):
+  let hour = strftime('%H') + 0
+  let other = (hour + 12) % 24
+  " A one-hour grid that holds neither the current hour nor the item's
+  let g:org_agenda_day_start = (hour + 6) % 24
+  let g:org_agenda_day_end = g:org_agenda_day_start
+  let lines = Agenda('day', ['* TODO Odd hour', printf('SCHEDULED: <%s %02d:20>', Ymd(0), other)])
+  Assert !empty(With(lines, '◀ now'))
+  Assert With(lines, 'Odd hour')[0] =~# printf('%02d:20', other), With(lines, 'Odd hour')[0]
+
 Execute (todo view: grouped by state, sorted by priority):
   let lines = Agenda('todo', ['* TODO b', '* TODO [#A] a', '* NEXT n', '* DONE d'])
   let t = index(lines, ' TODO')

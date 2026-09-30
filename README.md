@@ -537,7 +537,10 @@ group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last).
 ```
 
 Each item shows its own time (`10:30`, not the slot's `10:00`), and the current
-hour's items are listed under the `◀ now` line.
+hour's items are listed under the `◀ now` line. `g:org_agenda_day_start` and
+`g:org_agenda_day_end` set the usual grid, but it widens to take in the current hour
+and any timed item outside it, so at 5 am you still see `◀ now` and a 23:30 item
+is never hidden.
 
 ---
 

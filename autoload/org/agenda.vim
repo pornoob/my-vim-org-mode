@@ -692,6 +692,11 @@ function! s:render_day(items) abort
 
   " Hour slots
   let now_h = (jdn == today) ? strftime('%H', localtime()) + 0 : -1
+  " The grid widens to the current hour and to any timed item outside it, so
+  " neither ever drops off the view (Emacs never hides a timed item either)
+  let hours = map(keys(timed), 'v:val + 0') + (now_h >= 0 ? [now_h] : [])
+  let h_start = min([h_start] + hours)
+  let h_end   = max([h_end] + hours)
   for h in range(h_start, h_end)
     let label = printf('%2d:00', h)
     if h == now_h
