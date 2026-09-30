@@ -1,0 +1,95 @@
+" Refile: move a subtree under a target picked by outline path.
+
+Before:
+  let g:rf_dir = tempname()
+  call mkdir(g:rf_dir, 'p')
+  let g:rf_a = g:rf_dir . '/a.org'
+  let g:rf_b = g:rf_dir . '/b.org'
+  let g:org_agenda_files = [g:rf_dir]
+  let g:org_refile_maxlevel = 3
+
+After:
+  enew!
+  for b in filter(range(1, bufnr('$')), 'bufname(v:val) =~# "^" . g:rf_dir')
+    execute 'silent! bwipeout! ' . b
+  endfor
+  call delete(g:rf_dir, 'rf')
+  let g:org_agenda_files = []
+
+Execute (helpers):
+  " Open a.org with {a} (b.org holds {b}), put the cursor on line {lnum} and
+  " refile, answering the prompt with {answer}.
+  function! Refile(a, b, lnum, answer) abort
+    call writefile(a:a, g:rf_a)
+    call writefile(a:b, g:rf_b)
+    execute 'edit! ' . fnameescape(g:rf_a)
+    call cursor(a:lnum, 1)
+    call feedkeys(a:answer . "\<CR>", 't')
+    call org#refile#subtree()
+  endfunction
+
+Execute (same file, to a later headline: last child, re-levelled):
+  call Refile(['* Inbox', '** TODO Call bank', '   note', '*** detail', '* Projects', '** Web', 'text'], [],
+        \ 2, 'a.org/Projects')
+  AssertEqual ['* Inbox', '* Projects', '** Web', 'text', '** TODO Call bank', '   note', '*** detail'],
+        \ getline(1, '$')
+
+Execute (same file, to an earlier headline; cursor from the body):
+  call Refile(['* Done', '** old', '* Inbox', '** TODO x', 'body'], [], 5, 'a.org/Done')
+  AssertEqual ['* Done', '** old', '** TODO x', 'body', '* Inbox'], getline(1, '$')
+
+Execute (to a deeper target: the entry goes one level below it):
+  call Refile(['* TODO Task', '* Area', '** Sub'], [], 1, 'a.org/Area/Sub')
+  AssertEqual ['* Area', '** Sub', '*** TODO Task'], getline(1, '$')
+
+Execute (to another file that is not loaded: written to disk):
+  call Refile(['* Inbox', '** TODO Move me', '* Keep'], ['* Work', '** Existing', '* Home'], 2, 'b.org/Work')
+  AssertEqual ['* Inbox', '* Keep'], getline(1, '$')
+  AssertEqual ['* Work', '** Existing', '** TODO Move me', '* Home'], readfile(g:rf_b)
+
+Execute (to another file that is loaded: its buffer changes, unsaved):
+  call writefile(['* Work'], g:rf_b)
+  execute 'edit ' . fnameescape(g:rf_b)
+  call setline(1, ['* Work', '** unsaved child'])
+  call writefile(['* Task'], g:rf_a)
+  " hide: :edit! would discard b.org's unsaved change
+  execute 'hide edit ' . fnameescape(g:rf_a)
+  call feedkeys("b.org/Work\<CR>", 't')
+  call org#refile#subtree()
+  AssertEqual ['* Work', '** unsaved child', '** Task'], getbufline(bufnr(g:rf_b), 1, '$')
+  AssertEqual ['* Work'], readfile(g:rf_b)
+  Assert getbufvar(bufnr(g:rf_b), '&modified')
+
+Execute (a file itself is a target: top level at its end):
+  call Refile(['* A', '** Sub item', '*** deep'], ['* B'], 2, 'b.org')
+  AssertEqual ['* B', '* Sub item', '** deep'], readfile(g:rf_b)
+  AssertEqual ['* A'], getline(1, '$')
+
+Execute (the subtree and its children are not targets; nor deeper than maxlevel):
+  call writefile(['* Move', '** Child', '* Stay', '** L2', '*** L3', '**** L4'], g:rf_a)
+  call writefile([], g:rf_b)
+  execute 'edit! ' . fnameescape(g:rf_a)
+  let T = SFunc('refile', 'targets')
+  let paths = map(T(1, 2), 'v:val.path')
+  AssertEqual ['a.org', 'a.org/Stay', 'a.org/Stay/L2', 'a.org/Stay/L2/L3', 'b.org'], paths
+
+Execute (words match anywhere in the path; completion lists the matches):
+  call writefile(['* TODO [#A] Proyectos :work:', '** Página web', '* Casa'], g:rf_b)
+  call writefile(['* x'], g:rf_a)
+  execute 'edit! ' . fnameescape(g:rf_a)
+  call feedkeys("web proy\<CR>", 't')
+  call org#refile#subtree()
+  AssertEqual ['* TODO [#A] Proyectos :work:', '** Página web', '*** x', '* Casa'], readfile(g:rf_b)
+  AssertEqual ['b.org/Proyectos', 'b.org/Proyectos/Página web'], org#refile#complete('', 'proy', 0)
+
+Execute (ambiguous or unmatched answers change nothing):
+  call Refile(['* x', '* Target one', '* Target two'], [], 1, 'Target')
+  AssertEqual ['* x', '* Target one', '* Target two'], getline(1, '$')
+  call Refile(['* x', '* y'], [], 1, 'nothing like this')
+  AssertEqual ['* x', '* y'], getline(1, '$')
+
+Execute (not on a headline: nothing happens):
+  call writefile(['intro', '* A'], g:rf_a)
+  execute 'edit! ' . fnameescape(g:rf_a)
+  call org#refile#subtree()
+  AssertEqual ['intro', '* A'], getline(1, '$')

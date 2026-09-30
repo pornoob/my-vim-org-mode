@@ -11,7 +11,7 @@ function! org#archive#subtree() abort
   endif
 
   let [afile, heading] = s:location()
-  let last  = s:subtree_end(hl.lnum, hl.level)
+  let last  = org#core#subtree_end(hl.lnum)
   let entry = s:with_context(hl, getline(hl.lnum, last))
 
   if afile ==# expand('%:p')
@@ -41,18 +41,6 @@ function! s:location() abort
   let file  = substitute(parts[0], '%s', escape(expand('%:p'), '\&'), 'g')
   let file  = file ==# '' ? expand('%:p') : fnamemodify(expand(file), ':p')
   return [file, trim(get(parts, 1, ''))]
-endfunction
-
-function! s:subtree_end(lnum, level) abort
-  let lnum = a:lnum + 1
-  while lnum <= line('$')
-    let stars = matchstr(getline(lnum), '^\*\+\ze\s')
-    if !empty(stars) && len(stars) <= a:level
-      return lnum - 1
-    endif
-    let lnum += 1
-  endwhile
-  return line('$')
 endfunction
 
 " Return the subtree {lines} with ARCHIVE_TIME, ARCHIVE_FILE, ARCHIVE_OLPATH,

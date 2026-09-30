@@ -81,6 +81,7 @@ execute 'nnoremap <buffer> <silent> ' . s:l . 'i  :OrgSetID<CR>'
 
 " ── Archive ───────────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . '$  :OrgArchive<CR>'
+execute 'nnoremap <buffer> <silent> ' . s:l . 'w  :OrgRefile<CR>'
 
 " ── Highlight groups (applied here so they survive colorscheme reloads) ───────
 " Syntax/org.vim sets them first; this re-applies unconditionally so that a
@@ -126,4 +127,5 @@ let b:undo_ftplugin =
   \ . '| silent! nunmap <buffer> ' . s:l . ':'
   \ . '| silent! nunmap <buffer> ' . s:l . 'i'
   \ . '| silent! nunmap <buffer> ' . s:l . '$'
+  \ . '| silent! nunmap <buffer> ' . s:l . 'w'
   \ . '| call org#fold#clear_hl()'

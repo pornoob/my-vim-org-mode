@@ -30,6 +30,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Text-prompt fallback](#text-prompt-fallback)
   - [Reschedule logging](#reschedule-logging)
 - [Archiving](#archiving)
+- [Refiling](#refiling)
 - [Links](#links)
 - [Tables](#tables)
 - [Promote and Demote](#promote-and-demote)
@@ -186,6 +187,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}:` | Normal | Edit tags on current headline (comma-separated, with completion; any letter works, `:VEHÍCULOS:` included; an empty answer cancels, so delete the last tags by hand) |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
 | `{leader}$` | Normal | [Archive](#archiving) subtree to `*.org_archive` |
+| `{leader}w` | Normal | [Refile](#refiling) subtree under another headline (this file or any agenda file) |
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
 | `{leader}f` | Normal | Toggle all folds: open all if any closed, close all if all open |
@@ -718,6 +720,30 @@ entry, with its context recorded in `:PROPERTIES:`:
 
 ---
 
+## Refiling
+
+`{leader}w` (or `:OrgRefile`) moves the subtree under the cursor below another
+headline, like Emacs' `org-refile` with Doom's settings. It asks for the target by
+outline path, with completion:
+
+```
+Refile to: work.org/Projects/Web
+```
+
+- Targets are the headlines of the current file and of every agenda file, down to
+  `g:org_refile_maxlevel` (default `3`), plus each file itself (`work.org` refiles to
+  its top level, at the end).
+- Typing any words narrows the list: `web proj` matches `work.org/Projects/Web`. The
+  answer must match exactly one target.
+- The subtree becomes the target's last child, re-levelled to sit one level below
+  it; its own sub-headlines keep their relative depth. The subtree itself and its
+  children are never offered as targets.
+- A target file that is open in Vim is changed in its buffer and left unsaved, as
+  Emacs does; one that is not open is written directly.
+- A file name used in two folders is shown with its path (`~/org/a/todo.org/…`).
+
+---
+
 ## Links
 
 `{leader}o`, `<CR>` or `<C-c><C-c>` on a `[[link]]` or `[[link][description]]`
@@ -887,6 +913,7 @@ content lines are left untouched.
 | `:OrgTags` | Edit tags on current headline |
 | `:OrgSetID` | Generate and insert `:ID:` property on current headline |
 | `:OrgArchive` | Archive current subtree to `*.org_archive` |
+| `:OrgRefile` | Refile current subtree under another headline |
 | `:OrgCapture` | Open capture template for quick entry |
 | `:OrgReload` | Reload syntax and ftplugin for the current buffer, or refresh the agenda |
 
@@ -1051,6 +1078,7 @@ vim-org/
 │   ├── id.vim          – :ID: property generation
 │   ├── link.vim        – link opening ([[url]], [[file:…::search]], [[id:]], [[*H]])
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
+│   ├── refile.vim      – refile subtree under a headline (outline-path prompt)
 │   ├── table.vim       – table alignment and field motion
 │   ├── tags.vim        – tag editing
 │   └── todo.vim        – TODO cycle logic, CLOSED, state logging, repeaters

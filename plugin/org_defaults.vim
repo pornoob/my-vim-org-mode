@@ -23,6 +23,12 @@ if !exists('g:org_log_repeat')
   let g:org_log_repeat = 'time'
 endif
 
+" Refile ({leader}w): deepest headline level offered as a target, in the current
+" file and in every agenda file (Doom: org-refile-targets :maxlevel 3).
+if !exists('g:org_refile_maxlevel')
+  let g:org_refile_maxlevel = 3
+endif
+
 " Per-keyword colour overrides.
 " Keys are keyword strings; values are either:
 "   • a raw :highlight spec  'ctermfg=196 cterm=bold guifg=#fb4934 gui=bold'

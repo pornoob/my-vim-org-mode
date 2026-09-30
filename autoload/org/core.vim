@@ -366,14 +366,34 @@ function! org#core#file_entry(lines, heading, entry) abort
     let hl_idx = len(lines) - 1
   endif
 
-  " End of the heading's subtree: the next headline of its level or higher
-  let insert_at = hl_idx + 1
-  while insert_at < len(lines)
-        \ && !(lines[insert_at] =~# '^\*\+ ' && len(matchstr(lines[insert_at], '^\*\+')) <= level)
-    let insert_at += 1
-  endwhile
+  return org#core#insert_child(lines, hl_idx, a:entry)
+endfunction
 
-  return lines[: insert_at - 1] + org#core#set_level(a:entry, level + 1) + lines[insert_at :]
+" Return {lines} with {entry} inserted as the last child of the headline at
+" index {idx} (0-based): at the end of its subtree, re-levelled one below it.
+function! org#core#insert_child(lines, idx, entry) abort
+  let level = len(matchstr(a:lines[a:idx], '^\*\+'))
+  let at = a:idx + 1
+  while at < len(a:lines)
+        \ && !(a:lines[at] =~# '^\*\+\s' && len(matchstr(a:lines[at], '^\*\+')) <= level)
+    let at += 1
+  endwhile
+  return a:lines[: at - 1] + org#core#set_level(a:entry, level + 1) + a:lines[at :]
+endfunction
+
+" Last line of the subtree whose headline is on line {lnum} of the current
+" buffer: the line before the next headline of the same or a higher level.
+function! org#core#subtree_end(lnum) abort
+  let level = len(matchstr(getline(a:lnum), '^\*\+'))
+  let lnum  = a:lnum + 1
+  while lnum <= line('$')
+    let stars = matchstr(getline(lnum), '^\*\+\ze\s')
+    if !empty(stars) && len(stars) <= level
+      return lnum - 1
+    endif
+    let lnum += 1
+  endwhile
+  return line('$')
 endfunction
 
 " Headline {text} (what follows the stars) without its TODO keyword, priority
