@@ -29,6 +29,12 @@ if !exists('g:org_refile_maxlevel')
   let g:org_refile_maxlevel = 3
 endif
 
+" Links: show [[target][desc]] as its description only, like Emacs (the cursor
+" line always shows the raw link). 0 shows links raw everywhere.
+if !exists('g:org_link_conceal')
+  let g:org_link_conceal = 1
+endif
+
 " Per-keyword colour overrides.
 " Keys are keyword strings; values are either:
 "   • a raw :highlight spec  'ctermfg=196 cterm=bold guifg=#fb4934 gui=bold'

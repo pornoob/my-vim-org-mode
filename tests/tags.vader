@@ -49,6 +49,9 @@ Given org (non-ASCII tags are highlighted as tags):
   * Revisión técnica :IMPORTANTE:VEHÍCULOS:
 
 Execute:
+  " Headless Vim never redraws, so synID() can answer from the previous
+  " contents of this buffer: redraw before asking
+  redraw!
   let col = stridx(getline(1), ':IMP') + 1
   AssertEqual 'orgTag', synIDattr(synID(1, col, 1), 'name')
   AssertEqual 'orgTag', synIDattr(synID(1, col + 14, 1), 'name')

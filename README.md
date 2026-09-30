@@ -180,6 +180,8 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}R` | Normal | Reload org config (`:OrgReload`) |
 | `{leader}x` | Normal | Toggle checkbox `[ ]` → `[X]` → `[-]` → `[ ]` |
 | `{leader}x` | Visual | Toggle all checkboxes in selection |
+| `{leader}l` | Normal / Visual | [Insert or edit a link](#inserting-and-editing) (visual: selection becomes the description) |
+| `{leader}L` | Normal | Store a link to the current headline for `{leader}l` |
 | `{leader}o` | Normal | [Open link](#links) under cursor (`[[url]]`, `[[file:path::*Heading]]`, `[[id:uuid]]`, `[[*Heading]]`) |
 | `<CR>` | Normal | Open link under cursor (same as `{leader}o`) |
 | `{leader},` | Normal | Cycle priority `[#A]` → `[#B]` → `[#C]` → _(none)_ |
@@ -764,6 +766,31 @@ follows it, as Emacs' `org-open-at-point` does:
 Following a link from a buffer with unsaved changes keeps that buffer (hidden);
 `<C-o>` jumps back.
 
+### Display
+
+Like Emacs, links show only what matters: `[[id:6f1c…][Weekly meeting]]` is shown as
+an underlined **Weekly meeting**, and `[[https://example.com]]` as
+`https://example.com`. The text is still in the file, just hidden:
+
+- **The cursor line always shows its links raw**, so moving onto a line is enough
+  to edit a link by hand.
+- `:OrgToggleLinkDisplay` shows every link raw in the window, and back (Emacs'
+  `org-toggle-link-display`).
+- `let g:org_link_conceal = 0` turns hiding off altogether.
+
+Links inside `#` comment lines are left raw.
+
+### Inserting and editing
+
+| Key | Command | Emacs | Action |
+|---|---|---|---|
+| `{leader}l` | `:OrgInsertLink` | `C-c C-l` | On a link: edit its target and description (prefilled). Elsewhere: insert a new link after the cursor. Asks `Link:` then `Description:`; an empty link cancels, an empty description gives `[[target]]` |
+| `{leader}l` (visual) | `:'<,'>OrgInsertLink` | `C-c C-l` | Turn the selection (on one line) into a link, with the selection as its description |
+| `{leader}L` | `:OrgStoreLink` | `C-c l` | Store a link to the current headline: `id:…` if it has an `:ID:` (`{leader}i` adds one), else `file:path::*Title` |
+
+The `Link:` prompt completes stored links, most recent first, and picking one fills
+in its headline as the description.
+
 ---
 
 ## Tables
@@ -912,6 +939,9 @@ content lines are left untouched.
 | `:OrgCheckboxToggle` | Toggle checkbox on current line |
 | `:OrgTags` | Edit tags on current headline |
 | `:OrgSetID` | Generate and insert `:ID:` property on current headline |
+| `:OrgInsertLink` | Insert a link, or edit the one under the cursor |
+| `:OrgStoreLink` | Store a link to the current headline |
+| `:OrgToggleLinkDisplay` | Show links raw / as descriptions |
 | `:OrgArchive` | Archive current subtree to `*.org_archive` |
 | `:OrgRefile` | Refile current subtree under another headline |
 | `:OrgCapture` | Open capture template for quick entry |

@@ -114,7 +114,7 @@ endfor
 
 let s:hl_contains = join(s:kw_groups
       \ + ['orgPriorityA','orgPriorityB','orgPriorityC','orgPriority',
-      \    'orgTag','orgTimestampActive','orgTimestampInactive',
+      \    'orgTag','orgTimestampActive','orgTimestampInactive','orgLink',
       \    'orgCheckboxSummary','orgCheckboxDone','orgCheckboxIndet','orgCheckboxTodo'], ',')
 
 let s:hl_starts = [
@@ -245,7 +245,13 @@ syntax match orgTableHline /^\s*|-.*$/
 syntax match orgTableSep   /^\s*\zs|\|\%(^\s*|.*\)\@<=|/
 
 " ── Links [[url]] or [[url][desc]] ───────────────────────────────────────────
-syntax match orgLink /\[\[[^\]]*\]\(\[[^\]]*\]\)\?\]/
+" Shown as Emacs shows them (with 'conceallevel' 2): [[target][desc]] as desc,
+" [[target]] as target. The cursor line always shows the raw link
+" ('concealcursor' is empty), and :OrgToggleLinkDisplay shows every link raw.
+syntax match orgLink /\[\[[^\]]*\]\%(\[[^\]]*\]\)\=\]/ contains=orgLinkHide
+syntax match orgLinkHide /\[\[[^\]]*\]\[/ contained conceal
+syntax match orgLinkHide /\[\[\ze[^\]]*\]\]/ contained conceal
+syntax match orgLinkHide /\]\]/ contained conceal
 
 " ── Inline markup ─────────────────────────────────────────────────────────────
 " Opening delimiter must be preceded by whitespace or start of line so that

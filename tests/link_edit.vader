@@ -1,0 +1,125 @@
+" Link display (conceal), inserting / editing / storing links, raw toggle.
+
+Execute (helper):
+  " The text of line {lnum} as displayed: concealed characters dropped.
+  function! Shown(lnum) abort
+    let line = getline(a:lnum)
+    let out = ''
+    for c in range(1, len(line))
+      let [hidden, repl, _] = synconcealed(a:lnum, c)
+      if !hidden
+        let out .= line[c - 1]
+      endif
+    endfor
+    return out
+  endfunction
+
+Given org (links show their description, or their target without brackets):
+  See [[id:6f1c-42][Reunión semanal]] and [[https://example.com]].
+  * TODO Call about [[file:~/x.org::*Plan][the plan]] :work:
+
+Execute:
+  " Headless Vim never redraws, so synID() / synconcealed() can answer from
+  " earlier contents of this buffer: redraw before asking
+  redraw!
+  AssertEqual 2, &conceallevel
+  AssertEqual '', &concealcursor
+  AssertEqual 'See Reunión semanal and https://example.com.', Shown(1)
+  AssertEqual '* TODO Call about the plan :work:', Shown(2)
+  let col = stridx(getline(1), 'Reunión') + 1
+  AssertEqual 'orgLink', synIDattr(synID(1, col, 1), 'name')
+
+Given org (:OrgToggleLinkDisplay shows every link raw, and back):
+  [[id:1][one]]
+
+Execute:
+  call org#link#toggle_display()
+  AssertEqual 0, &conceallevel
+  call org#link#toggle_display()
+  AssertEqual 2, &conceallevel
+
+Given org (insert a new link after the cursor):
+  Read this
+
+Execute:
+  normal! $
+  call feedkeys("https://example.com\<CR>the docs\<CR>", 't')
+  call org#link#insert(0)
+
+Expect org:
+  Read this[[https://example.com][the docs]]
+
+Given org (a link without description; an empty target cancels):
+  x
+
+Execute:
+  call feedkeys("id:abc\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[id:abc]]', getline(1)
+  " Off the link (on it, the prompt would be prefilled to edit it)
+  call cursor(1, 1)
+  call feedkeys("\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[id:abc]]', getline(1)
+
+Given org (on a link: edit its target and description, prefilled):
+  Go to [[https://old.example][old site]] now
+
+Execute:
+  call cursor(1, 12)
+  call feedkeys("\<C-u>https://new.example\<CR>\<C-u>new site\<CR>", 't')
+  call org#link#insert(0)
+
+Expect org:
+  Go to [[https://new.example][new site]] now
+
+Given org (on a link: Enter twice keeps it as it was):
+  a [[id:1][one]] b
+
+Execute:
+  call cursor(1, 6)
+  call feedkeys("\<CR>\<CR>", 't')
+  call org#link#insert(0)
+
+Expect org:
+  a [[id:1][one]] b
+
+Given org (visual selection becomes the description):
+  Call Dr. Muñoz today
+
+Execute:
+  " Select 'Dr. Muñoz' (ends in a multibyte-adjacent char), then link it
+  execute "normal! fDvfz\<Esc>"
+  call feedkeys("id:doc\<CR>\<CR>", 't')
+  call org#link#insert(1)
+
+Expect org:
+  Call [[id:doc][Dr. Muñoz]] today
+
+Given org (store: id: when the headline has an ID, else file::*Title):
+  * TODO [#A] Pay rent :home:
+  :PROPERTIES:
+  :ID:       abc-123
+  :END:
+  * Plain heading
+  body
+
+Execute:
+  let g:org_stored_links = []
+  call org#link#store()
+  AssertEqual {'link': 'id:abc-123', 'desc': 'Pay rent'}, g:org_stored_links[0]
+  6
+  call org#link#store()
+  AssertEqual 'Plain heading', g:org_stored_links[0].desc
+  Assert g:org_stored_links[0].link =~# '^file:.*::\*Plain heading$', g:org_stored_links[0].link
+  AssertEqual 2, len(g:org_stored_links)
+
+Given org (inserting a stored link offers it and its description):
+  x
+
+Execute:
+  let g:org_stored_links = [{'link': 'id:abc-123', 'desc': 'Pay rent'}]
+  AssertEqual ['id:abc-123'], org#link#complete('', 'abc', 0)
+  call feedkeys("id:abc-123\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[id:abc-123][Pay rent]]', getline(1)

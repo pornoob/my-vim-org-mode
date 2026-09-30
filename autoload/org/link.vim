@@ -24,12 +24,13 @@ function! s:link_at_pos(line, col) abort
     if end < 0 | break | endif
 
     if a:col >= start + 1 && a:col <= end + 2
+      " start / end: byte index of the opening '[[' and just past the ']]'
       let inner = a:line[start+2 : end-1]
       let sep = stridx(inner, '][')
       if sep >= 0
-        return {'url': inner[0 : sep-1], 'desc': inner[sep+2 :]}
+        return {'url': inner[0 : sep-1], 'desc': inner[sep+2 :], 'start': start, 'end': end + 2}
       endif
-      return {'url': inner, 'desc': ''}
+      return {'url': inner, 'desc': '', 'start': start, 'end': end + 2}
     endif
 
     let idx = end + 2
@@ -194,3 +195,87 @@ function! s:find_headline_before(lines, lnum) abort
   return 0
 endfunction
 
+
+" ── Inserting, editing and storing links ──────────────────────────────────────
+
+" [[url][desc]], or [[url]] without a description.
+function! s:format(url, desc) abort
+  return '[[' . a:url . ']' . (a:desc ==# '' ? '' : '[' . a:desc . ']') . ']'
+endfunction
+
+" Insert a link at the cursor, or edit the one under it (Emacs' C-c C-l).
+" Prompts for the target, offering stored links, then the description. With
+" {visual} set, the last visual selection is replaced and becomes the default
+" description.
+function! org#link#insert(visual) abort
+  let line = getline('.')
+  let cur  = a:visual ? {} : s:link_at_pos(line, col('.'))
+  if a:visual
+    let [l1, c1] = [line("'<"), col("'<")]
+    let [l2, c2] = [line("'>"), col("'>")]
+    if l1 != l2
+      echohl WarningMsg | echo 'org: select text on one line to link it' | echohl None
+      return
+    endif
+    let c2 = min([c2, len(line)])
+    let c2 += len(matchstr(line[c2 - 1 :], '^.')) - 1     " include a multibyte last char
+    let cur = {'url': '', 'desc': line[c1 - 1 : c2 - 1], 'start': c1 - 1, 'end': c2}
+  endif
+
+  let url = trim(input('Link: ', get(cur, 'url', ''), 'customlist,org#link#complete'))
+  if url ==# ''
+    echo ''
+    return
+  endif
+  let stored = filter(copy(get(g:, 'org_stored_links', [])), 'v:val.link ==# url')
+  let default = get(cur, 'desc', '') !=# '' ? cur.desc : (empty(stored) ? '' : stored[0].desc)
+  let desc = trim(input('Description: ', default))
+  echo ''
+
+  let text = s:format(url, desc)
+  if has_key(cur, 'start')
+    call setline('.', strpart(line, 0, cur.start) . text . strpart(line, cur.end))
+    call cursor(line('.'), cur.start + 1)
+  else
+    let at = col('.') - 1 + (line ==# '' ? 0 : len(matchstr(line[col('.') - 1 :], '^.')))
+    call setline('.', strpart(line, 0, at) . text . strpart(line, at))
+    call cursor(line('.'), at + 1)
+  endif
+endfunction
+
+" Completion for the Link: prompt: stored links first, then anything typed.
+function! org#link#complete(lead, line, pos) abort
+  let links = map(copy(get(g:, 'org_stored_links', [])), 'v:val.link')
+  return filter(links, 'stridx(v:val, a:line) >= 0')
+endfunction
+
+" Store a link to the headline at the cursor for org#link#insert (Emacs'
+" C-c l): id:UUID when it has an :ID:, else file:PATH::*Title.
+function! org#link#store() abort
+  let hl   = org#core#current_headline()
+  let file = fnamemodify(expand('%:p'), ':~')
+  if empty(hl)
+    let entry = {'link': 'file:' . file, 'desc': expand('%:t')}
+  else
+    let title = org#core#headline_title(hl.text)
+    let props = org#core#scan_header(hl.lnum).props
+    let id    = ''
+    if props[0] > 0
+      for l in range(props[0] + 1, props[1] - 1)
+        let id = matchstr(getline(l), '^\s*:ID:\s\+\zs\S\+')
+        if id !=# '' | break | endif
+      endfor
+    endif
+    let entry = {'link': id !=# '' ? 'id:' . id : 'file:' . file . '::*' . title, 'desc': title}
+  endif
+  let g:org_stored_links = [entry]
+        \ + filter(get(g:, 'org_stored_links', []), 'v:val.link !=# entry.link')
+  echo 'Stored: ' . s:format(entry.link, entry.desc)
+endfunction
+
+" Show every link raw in this window, or back to descriptions only (Emacs'
+" org-toggle-link-display).
+function! org#link#toggle_display() abort
+  let &l:conceallevel = &l:conceallevel ? 0 : 2
+  echo 'org: links shown ' . (&l:conceallevel ? 'as descriptions' : 'raw')
+endfunction

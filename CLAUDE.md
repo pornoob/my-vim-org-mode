@@ -29,6 +29,8 @@ tests/run.sh tests/todo.vader   # one module
 - In `Do:` blocks `<Esc>` on the command line acts like `<CR>` (`:normal`).
 - `Given` strips the common indent of its lines.
 - A Funcref variable name must start with a capital (`let F = SFunc(...)`).
+- Headless Vim never redraws: `synID()` / `synconcealed()` may answer from the
+  buffer's previous contents. `redraw!` before asserting on syntax.
 - The runner fails if Vader's summary is missing: a prompt (`-- More --`, swap,
   "file changed") reads EOF and Vim quits; `tests/vimrc` sets `nomore`,
   `noswapfile`, `autoread` for that reason.

@@ -19,7 +19,9 @@ setlocal foldlevel=99
 
 " ── Text display ──────────────────────────────────────────────────────────────
 setlocal wrap linebreak textwidth=0
-setlocal conceallevel=2 concealcursor=nc
+" Links show only their description; the cursor line shows them raw for editing
+let &l:conceallevel = get(g:, 'org_link_conceal', 1) ? 2 : 0
+setlocal concealcursor=
 
 " ── TODO cycling ──────────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . 't  :call org#todo#cycle()<CR>'
@@ -82,6 +84,9 @@ execute 'nnoremap <buffer> <silent> ' . s:l . 'i  :OrgSetID<CR>'
 " ── Archive ───────────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . '$  :OrgArchive<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'w  :OrgRefile<CR>'
+execute 'nnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
+execute 'xnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
+execute 'nnoremap <buffer> <silent> ' . s:l . 'L  :OrgStoreLink<CR>'
 
 " ── Highlight groups (applied here so they survive colorscheme reloads) ───────
 " Syntax/org.vim sets them first; this re-applies unconditionally so that a
@@ -128,4 +133,7 @@ let b:undo_ftplugin =
   \ . '| silent! nunmap <buffer> ' . s:l . 'i'
   \ . '| silent! nunmap <buffer> ' . s:l . '$'
   \ . '| silent! nunmap <buffer> ' . s:l . 'w'
+  \ . '| silent! nunmap <buffer> ' . s:l . 'l'
+  \ . '| silent! xunmap <buffer> ' . s:l . 'l'
+  \ . '| silent! nunmap <buffer> ' . s:l . 'L'
   \ . '| call org#fold#clear_hl()'
