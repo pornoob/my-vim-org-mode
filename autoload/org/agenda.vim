@@ -303,6 +303,11 @@ function! s:setup_maps() abort
         \ : exists('g:maplocalleader') ? g:maplocalleader : '\'
   execute 'nnoremap <buffer> <silent> ' . l . 't :call org#agenda#todo(1)<CR>'
   execute 'nnoremap <buffer> <silent> ' . l . 'T :call org#agenda#todo(-1)<CR>'
+  " Note on the source entry: Emacs' agenda z / C-c C-z, and the org buffer's
+  " leader key
+  nnoremap <buffer> <silent> z          :call org#agenda#note()<CR>
+  nnoremap <buffer> <silent> <C-c><C-z> :call org#agenda#note()<CR>
+  execute 'nnoremap <buffer> <silent> ' . l . 'z :call org#agenda#note()<CR>'
 
   " In month view j/k move the focused day; elsewhere scroll normally
   nnoremap <buffer> <silent> j :call org#agenda#cursor_down()<CR>
@@ -323,6 +328,20 @@ function! s:setup_maps() abort
   syntax match orgAgendaSection /^ \(TODO\|NEXT\|WAITING\|DONE\|CANCELLED\|[A-Z]\+\)\s*$/
   syntax match orgAgendaTime    /^ *\d\{1,2}:\d\{2}/
   syntax match orgAgendaStale   /\d\+d\ze\s\{2}/
+  syntax match orgAgendaPriorityA /\[#A\]/
+  syntax match orgAgendaPriorityB /\[#B\]/
+  syntax match orgAgendaPriorityC /\[#C\]/
+  syntax match orgAgendaPriority  /\[#[D-Z]\]/
+
+  " Priority colours come from the org groups; the agenda may open before
+  " any .org buffer has defined them.
+  if !hlexists('orgPriorityA')
+    call org#highlight#apply()
+  endif
+  highlight default link orgAgendaPriorityA orgPriorityA
+  highlight default link orgAgendaPriorityB orgPriorityB
+  highlight default link orgAgendaPriorityC orgPriorityC
+  highlight default link orgAgendaPriority  orgPriority
 
   highlight default orgAgendaSep    ctermfg=242 guifg=#504945
   highlight default orgAgendaHeader ctermfg=214 cterm=bold guifg=#d79921 gui=bold
@@ -967,6 +986,18 @@ endfunction
 " Change the TODO state of the item under the cursor in its source file,
 " save it, and redraw. dir=1 forward (or shortcut prompt), dir=-1 backward.
 function! org#agenda#todo(dir) abort
+  call s:on_source(a:dir > 0 ? function('org#todo#cycle')
+        \ : function('org#todo#cycle_back'))
+endfunction
+
+" Add a note to the item's entry (Emacs' agenda z, org-agenda-add-note)
+function! org#agenda#note() abort
+  call s:on_source(function('org#note#add'))
+endfunction
+
+" Run {Action} with the cursor on the source headline of the item under the
+" cursor, save the file, and come back to a refreshed agenda.
+function! s:on_source(Action) abort
   let lnum = line('.')
   if !has_key(s:ag.link_map, lnum)
     echo 'org: no item on this line'
@@ -986,11 +1017,7 @@ function! org#agenda#todo(dir) abort
   let prev_view = winsaveview()
   execute 'keepalt hide edit ' . fnameescape(target.file)
   call cursor(target.lnum, 1)
-  if a:dir > 0
-    call org#todo#cycle()
-  else
-    call org#todo#cycle_back()
-  endif
+  call a:Action()
   silent update
   if tmp_split
     close

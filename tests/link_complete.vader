@@ -1,0 +1,92 @@
+" The Link: prompt completes link types, headlines (by title, for id: and
+" *), file paths and a file's headlines; picking a headline without an :ID:
+" gives it one.
+
+Before:
+  let g:lc_dir = tempname()
+  call mkdir(g:lc_dir, 'p')
+  call writefile(['* TODO [#A] Pay rent :home:', ':PROPERTIES:', ':ID:       abc-123',
+        \ ':END:', '* Meeting 2026-10-22', '* Same'], g:lc_dir . '/a.org')
+  call writefile(['* Same'], g:lc_dir . '/b.org')
+  let g:org_agenda_files = [g:lc_dir]
+  let g:org_stored_links = []
+
+After:
+  enew!
+  for b in filter(range(1, bufnr('$')), 'bufname(v:val) =~# "^" . g:lc_dir')
+    execute 'silent! bwipeout! ' . b
+  endfor
+  call delete(g:lc_dir, 'rf')
+  let g:org_agenda_files = []
+
+Execute (an empty prompt offers stored links, then the link types):
+  let g:org_stored_links = [{'link': 'id:abc-123', 'desc': 'Pay rent'}]
+  let c = org#link#complete('', '', 0)
+  AssertEqual 'id:abc-123', c[0]
+  Assert index(c, 'id:') > 0 && index(c, 'file:') > 0 && index(c, 'https://') > 0, string(c)
+  AssertEqual ['https://', 'http://'], org#link#complete('', 'htt', 0)
+
+Execute (id: offers the agenda files' headlines by title, telling twins apart):
+  let c = org#link#complete('', 'id:', 0)
+  Assert index(c, 'id:Pay rent') >= 0, string(c)
+  Assert index(c, 'id:Meeting 2026-10-22') >= 0, string(c)
+  Assert index(c, 'id:Same (a.org:6)') >= 0 && index(c, 'id:Same (b.org:1)') >= 0, string(c)
+  AssertEqual ['id:Meeting 2026-10-22'], org#link#complete('', 'id:meet', 0)
+
+Given org (an id: title links by the headline's ID, titled):
+  x
+
+Execute:
+  call feedkeys("id:Pay rent\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[id:abc-123][Pay rent]]', getline(1)
+
+Given org (a headline without an ID gets one, saved in its file):
+  x
+
+Execute:
+  call feedkeys("id:Meeting 2026-10-22\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  let id = matchstr(getline(1), '\[\[id:\zs[^]]\+')
+  AssertEqual 'x[[id:' . id . '][Meeting 2026-10-22]]', getline(1)
+  Assert id =~# '^\x\{8}-', id
+  let a = readfile(g:lc_dir . '/a.org')
+  AssertEqual ['* Meeting 2026-10-22', ':PROPERTIES:', ':ID:       ' . id, ':END:'], a[4:7]
+
+Given org (a headline of this buffer above the cursor gets its ID, link on the right line):
+  * Here
+  text
+
+Execute:
+  2
+  normal! $
+  call feedkeys("id:Here\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  let id = matchstr(getline(5), '\[\[id:\zs[^]]\+')
+  AssertEqual ['* Here', ':PROPERTIES:', ':ID:       ' . id, ':END:', 'text[[id:' . id . '][Here]]'],
+        \ getline(1, '$')
+
+Given org (* offers this buffer's headlines; the title is the description):
+  * TODO Intro :x:
+  * Other
+  x
+
+Execute:
+  AssertEqual ['*Intro', '*Other'], org#link#complete('', '*', 0)
+  normal! G
+  call feedkeys("*Intro\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[*Intro][Intro]]', getline(3)
+
+Execute (file: completes paths, then the file's headlines after ::*):
+  let p = 'file:' . g:lc_dir . '/'
+  AssertEqual [p . 'a.org', p . 'b.org'], org#link#complete('', p, 0)
+  AssertEqual [p . 'a.org::*Pay rent', p . 'a.org::*Meeting 2026-10-22', p . 'a.org::*Same'],
+        \ org#link#complete('', p . 'a.org::*', 0)
+
+Execute (a typed id that is no title is kept as it is):
+  enew!
+  call setline(1, 'x')
+  call feedkeys("id:abc-123\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual 'x[[id:abc-123][Pay rent]]', getline(1)

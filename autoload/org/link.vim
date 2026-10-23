@@ -222,13 +222,27 @@ function! org#link#insert(visual) abort
     let cur = {'url': '', 'desc': line[c1 - 1 : c2 - 1], 'start': c1 - 1, 'end': c2}
   endif
 
-  let url = trim(input('Link: ', get(cur, 'url', ''), 'customlist,org#link#complete'))
+  let url = trim(input('Link (<Tab>: id: * file: https:// …): ', get(cur, 'url', ''),
+        \ 'customlist,org#link#complete'))
   if url ==# ''
     echo ''
     return
   endif
+  " A headline title picked after id: becomes that headline's ID
+  let title = ''
+  if url =~# '^id:'
+    let hl = s:id_target(url[3:])
+    if !empty(hl)
+      let url   = 'id:' . s:ensure_id(hl)
+      let title = hl.title
+    endif
+  elseif url =~# '^\%(file:.*::\)\=\*'
+    let title = matchstr(url, '\*\zs.*')
+  endif
+  let line   = getline('.')     " an ID added above the cursor moved this line
   let stored = filter(copy(get(g:, 'org_stored_links', [])), 'v:val.link ==# url')
-  let default = get(cur, 'desc', '') !=# '' ? cur.desc : (empty(stored) ? '' : stored[0].desc)
+  let default = get(cur, 'desc', '') !=# '' ? cur.desc
+        \ : !empty(stored) ? stored[0].desc : title
   let desc = trim(input('Description: ', default))
   echo ''
 
@@ -243,10 +257,131 @@ function! org#link#insert(visual) abort
   endif
 endfunction
 
-" Completion for the Link: prompt: stored links first, then anything typed.
+" Completion for the Link: prompt. After id: the headlines of this buffer and
+" the agenda files, by title; after * this buffer's headlines; after file:
+" paths, and after file:PATH::* that file's headlines. Otherwise the stored
+" links, then the link types. Titles match anywhere, ignoring case.
 function! org#link#complete(lead, line, pos) abort
+  let typed = a:line
+  if typed =~# '^id:'
+    return s:matching(map(s:labelled(s:headlines()), '"id:" . v:val.label'), 3, typed)
+  elseif typed =~# '^\*'
+    return s:matching(map(s:scan(getline(1, '$'), expand('%:p')), '"*" . v:val.title'), 1, typed)
+  elseif typed =~# '^file:.*::\*'
+    let [path, search] = matchlist(typed, '^file:\(.\{-}\)::\(.*\)')[1:2]
+    let file  = s:resolve_path(path)
+    let lines = filereadable(file) ? readfile(file) : []
+    let pre   = 'file:' . path . '::*'
+    return s:matching(map(s:scan(lines, file), 'pre . v:val.title'), len(pre), typed)
+  elseif typed =~# '^file:'
+    return map(getcompletion(typed[5:], 'file'), '"file:" . v:val')
+  endif
   let links = map(copy(get(g:, 'org_stored_links', [])), 'v:val.link')
-  return filter(links, 'stridx(v:val, a:line) >= 0')
+  let types = ['id:', '*', 'file:', 'https://', 'http://', 'mailto:']
+  return filter(links, 'stridx(v:val, typed) >= 0')
+        \ + filter(types, 'stridx(v:val, typed) == 0')
+endfunction
+
+" The {candidates} whose text after the first {skip} bytes holds what was
+" typed after them, ignoring case.
+function! s:matching(candidates, skip, typed) abort
+  let want = tolower(a:typed[a:skip :])
+  return filter(a:candidates, 'stridx(tolower(v:val[a:skip :]), want) >= 0')
+endfunction
+
+" A link's PATH as a full file name: ~ and $VARS expanded, relative to the
+" current file's directory.
+function! s:resolve_path(path) abort
+  let path = expand(a:path)
+  if path !~# '^\%(/\|\a:[\\/]\)'
+    let path = expand('%:p:h') . '/' . path
+  endif
+  return simplify(path)
+endfunction
+
+" The headlines of {lines} (the text of {file}):
+" [{'file', 'lnum', 'title', 'id'}], id '' when the headline has none.
+function! s:scan(lines, file) abort
+  let out      = []
+  let in_props = 0
+  for i in range(len(a:lines))
+    let l = a:lines[i]
+    let m = matchstr(l, '^\*\+\s\+\zs.*')
+    if m !=# ''
+      call add(out, {'file': a:file, 'lnum': i + 1,
+            \ 'title': org#core#headline_title(m), 'id': ''})
+      let in_props = 0
+    elseif l =~? '^\s*:PROPERTIES:\s*$'
+      let in_props = !empty(out)
+    elseif l =~? '^\s*:END:\s*$'
+      let in_props = 0
+    elseif in_props && out[-1].id ==# '' && l =~# '^\s*:ID:\s\+\S'
+      let out[-1].id = matchstr(l, '^\s*:ID:\s\+\zs\S\+')
+    endif
+  endfor
+  return out
+endfunction
+
+" The headlines of this buffer (unsaved text included) and of every agenda file.
+function! s:headlines() abort
+  let cur = expand('%:p')
+  let out = s:scan(getline(1, '$'), cur)
+  for f in org#core#agenda_files()
+    let f = fnamemodify(f, ':p')
+    if f !=# cur && filereadable(f)
+      call extend(out, s:scan(readfile(f), f))
+    endif
+  endfor
+  return out
+endfunction
+
+" Give each headline its 'label': the title, plus FILE:LINE when another
+" headline has the same title.
+function! s:labelled(headlines) abort
+  let seen = {}
+  for h in a:headlines
+    let seen[h.title] = get(seen, h.title, 0) + 1
+  endfor
+  for h in a:headlines
+    let h.label = seen[h.title] > 1
+          \ ? printf('%s (%s:%d)', h.title, fnamemodify(h.file, ':t'), h.lnum)
+          \ : h.title
+  endfor
+  return a:headlines
+endfunction
+
+" The headline an id: link points at: by its ID, or by the label completion
+" offered. {} when it is neither.
+function! s:id_target(text) abort
+  let hls = s:labelled(s:headlines())
+  for h in hls
+    if h.id !=# '' && h.id ==# a:text
+      return h
+    endif
+  endfor
+  for h in hls
+    if h.label ==# a:text
+      return h
+    endif
+  endfor
+  return {}
+endfunction
+
+" The ID of headline {hl}, created (and its file saved) when it has none.
+function! s:ensure_id(hl) abort
+  if a:hl.id !=# ''
+    return a:hl.id
+  endif
+  if a:hl.file ==# expand('%:p')
+    return org#id#ensure(a:hl.lnum)
+  endif
+  let [buf, view] = [bufnr('%'), winsaveview()]
+  execute 'keepalt hide edit ' . fnameescape(a:hl.file)
+  let id = org#id#ensure(a:hl.lnum)
+  silent update
+  execute 'keepalt hide buffer ' . buf
+  call winrestview(view)
+  return id
 endfunction
 
 " Store a link to the headline at the cursor for org#link#insert (Emacs'

@@ -91,6 +91,16 @@ Execute (todo view: grouped by state, sorted by priority):
   Assert index(lines, ' NEXT') > t
   AssertEqual [], With(lines, ' d ')
 
+Execute (todo view: each priority cookie gets its level's colour):
+  let lines = Agenda('todo', ['* TODO [#A] a', '* TODO [#B] b', '* TODO [#C] c'])
+  redraw!
+  for p in ['A', 'B', 'C']
+    let lnum = index(lines, With(lines, '[#' . p . ']')[0]) + 1
+    let col  = stridx(getline(lnum), '[#' . p . ']') + 1
+    AssertEqual 'orgPriority' . p,
+          \ synIDattr(synIDtrans(synID(lnum, col, 1)), 'name')
+  endfor
+
 Execute (deadlines view: horizon, and n/p do not change the user's setting):
   let lines = Agenda('deadlines', ['* TODO Soon', 'DEADLINE: <' . Ymd(3) . '>',
         \ '* TODO Far', 'DEADLINE: <' . Ymd(30) . '>'])
@@ -117,3 +127,13 @@ Execute (todo from the agenda changes the source file):
   call search('Task')
   call org#agenda#todo(1)
   AssertEqual ['* NEXT Task'], readfile(g:ag_file)
+
+Execute (z in the agenda adds a note to the source entry):
+  let lines = Agenda('todo', ['* TODO Task'])
+  call search('Task')
+  AssertEqual ':call org#agenda#note()<CR>', maparg('z', 'n')
+  call feedkeys("Called back\<CR>", 't')
+  call org#agenda#note()
+  AssertEqual ['* TODO Task', '  :LOGBOOK:', '  - Note taken on ' . Now() . ' \\',
+        \ '    Called back', '  :END:'], readfile(g:ag_file)
+  AssertEqual '[Org Agenda]', bufname('%')

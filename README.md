@@ -18,6 +18,7 @@ A VimScript plugin for working with [Org Mode](https://orgmode.org/) files (`.or
   - [Shortcut-key picker](#shortcut-key-picker)
   - [File-local keywords](#file-local-keywords)
   - [State-change logging](#state-change-logging)
+  - [Notes](#notes)
   - [Repeating tasks on DONE](#repeating-tasks-on-done)
 - [Context Action](#context-action)
 - [Clocking](#clocking)
@@ -189,6 +190,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader};` | Normal | Cycle priority backward |
 | `{leader}:` | Normal | Edit tags on current headline (comma-separated, with completion; any letter works, `:VEHÍCULOS:` included; an empty answer cancels, so delete the last tags by hand) |
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
+| `{leader}z` / `<C-c><C-z>` | Normal | [Add a note](#notes) to the current entry's `:LOGBOOK:` |
 | `{leader}$` | Normal | [Archive](#archiving) subtree to `*.org_archive` |
 | `{leader}w` | Normal | [Refile](#refiling) subtree under another headline (this file or any agenda file) |
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
@@ -277,6 +279,27 @@ of the old state applies. An empty note (or `<Esc>`) logs just the timestamp.
   a new one is placed after the planning lines and `:PROPERTIES:`.
 - Files without markers (and the global `g:org_todo_keywords`) log nothing, except
   for repeating tasks (below).
+
+### Notes
+
+`{leader}z` or `<C-c><C-z>` (Emacs' `org-add-note`, `C-c C-z`) adds a note to the
+entry under the cursor without changing its state; from the [agenda](#agenda),
+`z` does the same on the item's source entry. The cursor can be on the headline
+or anywhere in its body. The note goes on top of the `:LOGBOOK:`, under Emacs'
+default heading:
+
+```org
+* DONE Meeting
+  SCHEDULED: <2026-10-22 Thu 20:30>
+  :LOGBOOK:
+  - Note taken on [2026-10-22 Thu 21:40] \\
+    Progress review and priorities
+  :END:
+```
+
+The note is one line; an empty answer (or `<Esc>`) writes nothing. Write the
+note through the prompt rather than typing it into the drawer by hand: a bare
+line inside `:LOGBOOK:` is not a log item, and Emacs will not show it as a note.
 
 ### Repeating tasks on DONE
 
@@ -463,6 +486,7 @@ let g:org_agenda_show_past_scheduled = 1  " missed SCHEDULED items nag on today 
 | `Enter` | Open source file at the item's line |
 | `o` | Preview source in other window (stay in agenda) |
 | `{leader}t` / `{leader}T` | Cycle the item's TODO state forward / backward (saves the file and refreshes) |
+| `z` / `<C-c><C-z>` / `{leader}z` | [Add a note](#notes) to the item's entry (saves the file and refreshes) |
 | `r` / `g` | Refresh (re-scan all files) |
 | `q` | Close agenda |
 
@@ -499,7 +523,9 @@ passed, labelled `Sched.Nx` — N days since the missed occurrence:
 ### TODO view sorting
 
 Items in the TODO view are grouped by state and sorted by priority within each
-group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last).
+group (`[#A]` first, then `[#B]`, `[#C]`, unprioritised last). Each cookie
+keeps its level's colour from the org buffer (`orgAgendaPriorityA` … links to
+`orgPriorityA` …).
 
 ### Week view example
 
@@ -794,8 +820,18 @@ Links inside `#` comment lines are left raw.
 | `{leader}l` (visual) | `:'<,'>OrgInsertLink` | `C-c C-l` | Turn the selection (on one line) into a link, with the selection as its description |
 | `{leader}L` | `:OrgStoreLink` | `C-c l` | Store a link to the current headline: `id:…` if it has an `:ID:` (`{leader}i` adds one), else `file:path::*Title` |
 
-The `Link:` prompt completes stored links, most recent first, and picking one fills
-in its headline as the description.
+The `Link:` prompt completes with `<Tab>`, by what has been typed so far:
+
+| Typed | `<Tab>` offers | Inserted |
+|---|---|---|
+| _(nothing)_ | Stored links (most recent first), then the link types `id:` `*` `file:` `https://` `http://` `mailto:` | — |
+| `id:` + part of a title | Headlines of this buffer and of the [agenda files](#agenda), by title (any part, any case); twins get `(file.org:line)` | `[[id:UUID][Title]]`; a headline without `:ID:` gets one, and its file is saved |
+| `*` + part of a title | Headlines of this buffer | `[[*Title][Title]]` |
+| `file:` + path | Files and directories | `[[file:path]]` |
+| `file:path::*` + part of a title | Headlines of that file | `[[file:path::*Title][Title]]` |
+
+The description is prefilled with the headline's title (or a stored link's), so
+`Enter` keeps it. An `id:` that is already a UUID is kept as typed.
 
 ---
 
@@ -945,6 +981,7 @@ content lines are left untouched.
 | `:OrgCheckboxToggle` | Toggle checkbox on current line |
 | `:OrgTags` | Edit tags on current headline |
 | `:OrgSetID` | Generate and insert `:ID:` property on current headline |
+| `:OrgAddNote` | Add a note to the current entry's `:LOGBOOK:` |
 | `:OrgInsertLink` | Insert a link, or edit the one under the cursor |
 | `:OrgStoreLink` | Store a link to the current headline |
 | `:OrgToggleLinkDisplay` | Show links raw / as descriptions |
@@ -981,7 +1018,7 @@ Skips the buffer-specific steps above and goes straight to re-sourcing commands 
 | Headline stars | `orgStars1` … `orgStars8` |
 | Active TODO keywords | `orgKw_{KEYWORD}` (warm bold, customisable) |
 | Done TODO keywords | `orgKw_{KEYWORD}` (muted, customisable) |
-| Priority `[#A]` | `orgPriority` |
+| Priority `[#A]` `[#B]` `[#C]` / `[#D]`… | `orgPriorityA`, `orgPriorityB`, `orgPriorityC` / `orgPriority` |
 | Tags `:foo:bar:` | `orgTag` |
 | Active timestamp `<…>` | `orgTimestampActive` |
 | Inactive timestamp `[…]` | `orgTimestampInactive` |
@@ -1131,6 +1168,7 @@ vim-org/
 │   ├── highlight.vim   – all highlight group definitions (survives colorscheme reloads)
 │   ├── id.vim          – :ID: property generation
 │   ├── link.vim        – link opening ([[url]], [[file:…::search]], [[id:]], [[*H]])
+│   ├── note.vim        – free notes into :LOGBOOK: (C-c C-z)
 │   ├── priority.vim    – priority cycling [#A] / [#B] / [#C]
 │   ├── refile.vim      – refile subtree under a headline (outline-path prompt)
 │   ├── sparse.vim      – sparse trees (regexp / TODO / tag)

@@ -81,6 +81,10 @@ execute 'nnoremap <buffer> <silent> ' . s:l . ':  :OrgTags<CR>'
 " ── ID property ───────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . 'i  :OrgSetID<CR>'
 
+" ── Notes (Emacs org-mode's C-c C-z) ──────────────────────────────────────
+execute 'nnoremap <buffer> <silent> ' . s:l . 'z  :OrgAddNote<CR>'
+nnoremap <buffer> <silent> <C-c><C-z> :OrgAddNote<CR>
+
 " ── Archive ───────────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . '$  :OrgArchive<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'w  :OrgRefile<CR>'
@@ -132,6 +136,8 @@ let b:undo_ftplugin =
   \ . '| silent! nunmap <buffer> ' . s:l . ';'
   \ . '| silent! nunmap <buffer> ' . s:l . ':'
   \ . '| silent! nunmap <buffer> ' . s:l . 'i'
+  \ . '| silent! nunmap <buffer> ' . s:l . 'z'
+  \ . '| silent! nunmap <buffer> <C-c><C-z>'
   \ . '| silent! nunmap <buffer> ' . s:l . '$'
   \ . '| silent! nunmap <buffer> ' . s:l . 'w'
   \ . '| silent! nunmap <buffer> ' . s:l . 'l'

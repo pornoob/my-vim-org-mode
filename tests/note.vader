@@ -1,0 +1,60 @@
+" Free notes on an entry (Emacs' org-add-note, C-c C-z), logged at the top of
+" its :LOGBOOK: as "Note taken on".
+
+Given org (note on a headline without a drawer goes after its planning):
+  * TODO Meeting
+    SCHEDULED: <2026-10-22 jue 20:30>
+  Body
+
+Do:
+  :call org#note#add()\<CR>Went well\<CR>
+
+Then:
+  AssertEqual [
+        \ '* TODO Meeting',
+        \ '  SCHEDULED: <2026-10-22 jue 20:30>',
+        \ '  :LOGBOOK:',
+        \ '  - Note taken on ' . Now() . ' \\',
+        \ '    Went well',
+        \ '  :END:',
+        \ 'Body',
+        \ ], getline(1, '$')
+
+Given org (note from the body lands on its entry, newest first):
+  * TODO Task
+    :LOGBOOK:
+    - State "TODO"       from "NEXT"       [2026-10-01 jue 10:00]
+    :END:
+  Body
+  * TODO Other
+
+Do:
+  G2k:call org#note#add()\<CR>Second\<CR>
+
+Then:
+  AssertEqual [
+        \ '* TODO Task',
+        \ '  :LOGBOOK:',
+        \ '  - Note taken on ' . Now() . ' \\',
+        \ '    Second',
+        \ '  - State "TODO"       from "NEXT"       [2026-10-01 jue 10:00]',
+        \ '  :END:',
+        \ 'Body',
+        \ '* TODO Other',
+        \ ], getline(1, '$')
+
+Given org (an empty note writes nothing):
+  * TODO Task
+
+Do:
+  :call org#note#add()\<CR>\<CR>
+
+Then:
+  AssertEqual ['* TODO Task'], getline(1, '$')
+
+Given org (both Emacs' C-c C-z and the leader key add a note):
+  * TODO Task
+
+Execute:
+  AssertEqual ':OrgAddNote<CR>', maparg('<C-c><C-z>', 'n')
+  AssertEqual ':OrgAddNote<CR>', maparg('\z', 'n')

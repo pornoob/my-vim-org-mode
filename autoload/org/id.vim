@@ -13,9 +13,18 @@ function! org#id#set() abort
     return
   endif
 
-  let uuid = s:generate_uuid()
-  call org#core#set_property(hl.lnum, 'ID', uuid)
-  echo 'ID set: ' . uuid
+  echo 'ID set: ' . org#id#ensure(hl.lnum)
+endfunction
+
+" The :ID: of the headline at {headline_lnum}, created when it has none
+" (Emacs' org-id-get-create).
+function! org#id#ensure(headline_lnum) abort
+  let id = s:get_existing_id(a:headline_lnum)
+  if id ==# ''
+    let id = s:generate_uuid()
+    call org#core#set_property(a:headline_lnum, 'ID', id)
+  endif
+  return id
 endfunction
 
 function! s:generate_uuid() abort
