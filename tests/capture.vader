@@ -110,3 +110,83 @@ Execute (visual {leader}C passes the selection to %i):
   execute "normal \\C"
   AssertEqual ['* ', ''], getline(1, '$')
   call org#capture#abort()
+
+" ── Emacs placeholders, template files, :prepend ──────────────────────────────
+
+Execute (%<fmt> is strftime, %^{Prompt|default} asks, %\N repeats the Nth answer):
+  let g:org_capture_templates[0].template =
+        \ "* Meet %^{Date|%<%Y-%m-%d>}\n  SCHEDULED: <%\\1 %^{Time|20:30}>\n  %^{Who}"
+  enew!
+  call feedkeys("\<CR>\<C-u>09:00\<CR>Ana\<CR>", 't')
+  call org#capture#open()
+  AssertEqual ['* Meet ' . strftime('%Y-%m-%d'), '  SCHEDULED: <' . Ymd(0) . ' 09:00>', '  Ana'],
+        \ getline(1, '$')
+  call org#capture#abort()
+
+Execute (a typed date gets its day name in the timestamp):
+  let g:org_capture_templates[0].template = "* Meet\n  SCHEDULED: <%^{Date} 20:30>"
+  enew!
+  call feedkeys("2026-10-29\<CR>", 't')
+  call org#capture#open()
+  AssertEqual '  SCHEDULED: <' . Date(2026, 10, 29) . ' 20:30>', getline(2)
+  call org#capture#abort()
+
+Execute (%^{Prompt}t asks a date: exact, relative or a day name; %\N is its YYYY-MM-DD):
+  let g:org_capture_templates[0].template = "* Meet %\\1\n  SCHEDULED: %^{Date}T"
+  for [typed, want] in [['2026-10-29', Date(2026, 10, 29)], ['', Ymd(0)],
+        \ ['+1w 20:30', Ymd(7) . ' 20:30'], ['+3', Ymd(3)],
+        \ [split(Ymd(3))[1], Ymd(3)], ['2026-10-29 9:05', Date(2026, 10, 29) . ' 09:05']]
+    enew!
+    call feedkeys(typed . "\<CR>", 't')
+    call org#capture#open()
+    AssertEqual ['* Meet ' . split(want)[0], '  SCHEDULED: <' . want . '>'], getline(1, '$'), typed
+    call org#capture#abort()
+  endfor
+
+Execute (a date that cannot be read is asked again):
+  let g:org_capture_templates[0].template = "%^{Date}u"
+  enew!
+  call feedkeys("someday\<CR>2026-10-29\<CR>", 't')
+  call org#capture#open()
+  AssertEqual ['[' . Date(2026, 10, 29) . ']'], getline(1, '$')
+  call org#capture#abort()
+
+Execute (prompt choices: %^{P|a|b} and the template's 'complete' complete with Tab):
+  let g:org_capture_templates[0].template = "%^{Co|Cityex|Apptec} %^{Who}"
+  let g:org_capture_templates[0].complete = {'Who': {-> ['Alberto', 'Ana']}}
+  enew!
+  call feedkeys("\<C-u>Ap\<Tab>\<CR>Al\<Tab>\<CR>", 't')
+  call org#capture#open()
+  AssertEqual ['Apptec Alberto'], getline(1, '$')
+  call org#capture#abort()
+
+Execute (file may be a Funcref of the answers, as Emacs' (file (lambda …))):
+  let dir = fnamemodify(g:cap_file, ':h')
+  let g:org_capture_templates[0].template = "* %^{Co}"
+  let g:org_capture_templates[0].headline = ''
+  let g:org_capture_templates[0].file =
+        \ {a -> fnamemodify(g:cap_file, ':h') . '/' . tolower(a[0]) . '.org'}
+  enew!
+  call feedkeys("Cityex\<CR>", 't')
+  call org#capture#open()
+  call org#capture#finalize()
+  AssertEqual ['* Cityex'], readfile(dir . '/cityex.org')
+  call delete(dir . '/cityex.org')
+
+Execute (template_file reads the template from a file, as Emacs' (file "…")):
+  let tpl = tempname() . '.org'
+  call writefile(['* TODO %?', '  %<%Y>', ''], tpl)
+  unlet g:org_capture_templates[0].template
+  let g:org_capture_templates[0].template_file = tpl
+  enew!
+  call org#capture#open()
+  AssertEqual ['* TODO ', '  ' . strftime('%Y')], getline(1, '$')
+  call org#capture#abort()
+  call delete(tpl)
+
+Execute (prepend: the entry goes before the file's first headline):
+  let g:org_capture_templates[0].headline = ''
+  let g:org_capture_templates[0].prepend = 1
+  call writefile(['#+TITLE: x', '# comment', '', '* Old', 'body'], g:cap_file)
+  call CaptureLines(['* New'])
+  AssertEqual ['#+TITLE: x', '# comment', '', '* New', '* Old', 'body'], readfile(g:cap_file)

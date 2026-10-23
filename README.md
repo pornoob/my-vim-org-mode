@@ -594,9 +594,46 @@ let g:org_capture_templates = [
 |---|---|---|
 | `key` | yes | Single key in the picker |
 | `desc` | yes | Label in the picker |
-| `template` | yes | Text of the entry; use `\n` for new lines |
-| `file` | yes | Target file (`~` and `$VARS` are expanded) |
+| `template` | yes, or `template_file` | Text of the entry; use `\n` for new lines |
+| `template_file` | — | A file holding the template instead (Emacs' `(file "…")`); trailing blank lines are dropped |
+| `file` | yes | Target file (`~` and `$VARS` are expanded), or a Funcref given the list of prompt answers that returns it (Emacs' `(file (lambda …))`) |
 | `headline` | no | Level-1 headline (`* Inbox`) to file the entry under |
+| `prepend` | no | `1`: without `headline`, put the entry before the file's first headline (Emacs' `:prepend t`), so the newest comes first |
+| `complete` | no | `{'Prompt': Funcref}`: extra `<Tab>` choices for that `%^{Prompt}`, computed when it is asked |
+
+A template kept in a file, here for meetings with several clients, each one's
+in `~/org/<client>/<client>.org` (newest on top; the client completes from the
+folders, the date is asked once and goes into both the title and `SCHEDULED`):
+
+```vim
+let g:org_capture_templates = [
+  \ {'key': 'r', 'desc': 'Meeting',
+  \  'template_file': '~/org/templates/meeting.tpl',
+  \  'complete': {'Client': {-> map(filter(glob('~/org/*', 0, 1), 'isdirectory(v:val)'),
+  \                                 'fnamemodify(v:val, ":t")')}},
+  \  'file': {a -> '~/org/' . a[0] . '/' . a[0] . '.org'},
+  \  'prepend': 1},
+  \ ]
+```
+
+```org
+* TODO Meeting - %^{Client} %\2
+  SCHEDULED: %^{Date}T
+  Previous: %?
+```
+
+Answering `acme`, then `thu 20:30` gives:
+
+```org
+* TODO Meeting - acme 2026-10-29
+  SCHEDULED: <2026-10-29 Thu 20:30>
+  Previous:
+```
+
+At `%?`, `{leader}l` and `id:` + `<Tab>` link the previous meeting by its title.
+If an agenda directory holds the templates, give them an extension other than
+`.org`: the agenda reads every `.org` file under it, and would list the
+template's `TODO`.
 
 ### Template placeholders
 
@@ -607,7 +644,30 @@ let g:org_capture_templates = [
 | `%f` | Full path of the buffer capture was started from |
 | `%F` | File name only of that buffer |
 | `%i` | The selection capture was started on (visual `{leader}C`); empty otherwise |
+| `%<FORMAT>` | The current time through `strftime()`: `%<%Y-%m-%d>` → `2026-10-29` |
+| `%^{Prompt}` | Asks `Prompt:` when capture opens, in order of appearance |
+| `%^{Prompt\|default}` | The same, prefilled with `default` (which may use `%<…>`) |
+| `%^{Prompt\|default\|choice…}` | The same; `<Tab>` completes the choices (and the template's `complete`) |
+| `%^{Prompt}t` / `%^{Prompt}T` | Asks a date, inserts an active timestamp `<2026-10-29 jue>` (with the time, when one is typed) |
+| `%^{Prompt}u` / `%^{Prompt}U` | The same, inactive `[…]` |
+| `%\1` … `%\9` | The answer to the 1st … 9th prompt again; for a date prompt, its `YYYY-MM-DD` |
+
+A date prompt reads what Emacs' date prompt reads:
+
+| Typed | Date |
+|---|---|
+| _(nothing)_, `.`, `today`, `hoy` | Today |
+| `tomorrow`, `mañana` | Tomorrow |
+| `+3`, `+3d`, `+1w`, `+1m`, `+1y` | That far from today (months clamp to the month's last day) |
+| `thu`, `jue`, `jueves` | The next such day, today included (English, or the locale's day names) |
+| `2026-10-29` | That date |
+| any of these + ` 20:30` | With that time |
+
+An answer that is not a date is asked again.
 | `%?` | Cursor position after expansion (first occurrence only) |
+
+A timestamp left without a day name, like `<%\1 20:30>` with the answer
+`2026-10-29`, gets one (`<2026-10-29 jue 20:30>`), and a wrong one is corrected.
 
 ### Finishing
 
