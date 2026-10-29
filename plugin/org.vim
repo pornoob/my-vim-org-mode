@@ -36,13 +36,6 @@ augroup org_highlight_guard
   autocmd ColorScheme * call org#highlight#apply()
 augroup END
 
-" ── Re-apply fold matchadd() when an org buffer appears in any window ─────────
-" matchadd() is window-local, so splits need their own set of IDs.
-augroup org_fold_hl_guard
-  autocmd!
-  autocmd BufWinEnter * if &filetype ==# 'org' | call org#fold#setup_hl() | endif
-augroup END
-
 " ── Block background text-property refresh ───────────────────────────────────
 " text properties track text changes automatically, but we need to re-scan to
 " add props for newly typed #+BEGIN_* blocks.  Debounce so rapid typing in a

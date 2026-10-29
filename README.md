@@ -1143,6 +1143,15 @@ Folding uses `foldmethod=expr`. Three kinds of structures create folds:
 | Source / example / quote blocks | `#+BEGIN_*` … `#+END_*` |
 | Drawers | `:PROPERTIES:` … `:END:` and `:LOGBOOK:` … `:END:` |
 
+### Colours on closed folds
+
+A closed headline fold shows `* TODO [#A] Title  (12L)`, and the keyword and the
+priority keep their colours (`orgKw_{KEYWORD}`, `orgPriority`), file-local
+`#+SEQ_TODO` keywords included. Vim draws fold text in `Folded` only (syntax and
+`matchadd()` never reach it), so each closed fold on screen gets a small popup over
+its keyword; popups are refreshed when Vim goes idle (`SafeState`) after folding,
+scrolling, editing or resizing. Needs Vim 8.2 with `+popupwin` and `+textprop`.
+
 ### Global fold cycle (`<S-Tab>`)
 
 | State | Effect |

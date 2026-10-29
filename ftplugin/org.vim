@@ -98,9 +98,17 @@ execute 'nnoremap <buffer> <silent> ' . s:l . '/  :OrgSparseTree<CR>'
 " colorscheme that fires after syntax (lazy-load, VimEnter, etc.) can't wipe them.
 call org#highlight#apply()
 
-" ── Fold text highlights ──────────────────────────────────────────────────────
-" matchadd() reaches fold text lines (window-level highlight); this is the only
-" way to colour foldtext in Vim — the List return API is Neovim-only.
+" ── Coloured keywords on closed folds ────────────────────────────────────────
+" Fold text is drawn in Folded alone, so popups paint the keyword over it (see
+" autoload/org/fold.vim). SafeState comes after every command (zc, zo, <Tab>,
+" scrolling, resizes) once Vim waits for a key; only what changed is rebuilt.
+" Registered on the first org buffer, so other sessions never load fold.vim.
+augroup org_fold_hl_guard
+  autocmd!
+  if exists('##SafeState')
+    autocmd SafeState * call org#fold#kw_popups()
+  endif
+augroup END
 call org#fold#setup_hl()
 
 

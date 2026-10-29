@@ -118,3 +118,63 @@ Execute:
   AssertEqual [-1, 2, -1], [foldclosed(1), foldclosed(2), foldclosed(5)]
   call org#fold#shifttab()
   AssertEqual [-1, -1], [foldclosed(2), foldclosed(6)]
+
+Execute (helper):
+  " Keyword popups over the closed folds of this window: [buffer line, column
+  " after the window's text offset, text], so the case holds wherever Vader puts
+  " the window.
+  function! FoldPops() abort
+    redraw!
+    call org#fold#kw_popups()
+    let win = getwininfo(win_getid())[0]
+    let rows = {}
+    for lnum in range(line('w0'), line('w$'))
+      if foldclosed(lnum) == lnum
+        let rows[screenpos(0, lnum, 1).row] = lnum
+      endif
+    endfor
+    let out = []
+    for [row, col, text] in org#fold#kw_popup_list()
+      if has_key(rows, row) && col > win.wincol && col < win.wincol + win.width
+        call add(out, [rows[row], col - win.wincol - win.textoff, text])
+      endif
+    endfor
+    return out
+  endfunction
+
+Given org (closed folds keep the TODO keyword and priority colours, as popups):
+  #+SEQ_TODO: TODO REPEAT | DONE
+  * TODO [#A] Uno
+  a
+  ** REPEAT Dos
+  b
+  * Sin estado
+  c
+  * [#B] Solo prioridad
+  d
+  * DONE Tres
+  e
+
+Execute:
+  " Given fills the buffer after the syntax ran: let it see #+SEQ_TODO
+  set syntax=org
+  normal! zM
+  AssertEqual [[2, 2, 'TODO [#A]'], [8, 2, '[#B]'], [10, 2, 'DONE']], FoldPops()
+  normal! zR
+  AssertEqual [], FoldPops()
+  normal! zM
+  2
+  normal! zo
+  AssertEqual [[4, 3, 'REPEAT'], [8, 2, '[#B]'], [10, 2, 'DONE']], FoldPops()
+
+Given org (a popup follows a keyword change):
+  * TODO Uno
+  a
+
+Execute:
+  normal! zM
+  AssertEqual [[1, 2, 'TODO']], FoldPops()
+  call setline(1, '* DONE Uno')
+  AssertEqual [[1, 2, 'DONE']], FoldPops()
+  call org#fold#clear_hl()
+  AssertEqual [], org#fold#kw_popup_list()

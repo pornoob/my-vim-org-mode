@@ -50,11 +50,13 @@ endfunction
 " s:buf_kws(): keyword list that mirrors what syntax/org.vim sees.
 " Reads #+SEQ_TODO / #+TODO from the current buffer (first 200 lines) so that
 " file-local keywords (WAITING, PAYED, CANCELLED …) are included.
-" Cached in b:org_kw_cache; OrgReload clears it with `unlet! b:org_kw_cache`.
+" Cached in b:org_kw_cache until the buffer changes (b:org_kw_tick), so a
+" #+SEQ_TODO line added or edited later is picked up; OrgReload clears it too.
 function! s:buf_kws() abort
-  if exists('b:org_kw_cache')
+  if exists('b:org_kw_cache') && get(b:, 'org_kw_tick', -1) == b:changedtick
     return b:org_kw_cache
   endif
+  let b:org_kw_tick = b:changedtick
   for l:n in range(1, min([line('$'), 200]))
     let l:m = matchlist(getline(l:n),
           \ '^\c\s*#+\%(SEQ_TODO\|TODO\):\s*\(.*\)$')
@@ -113,42 +115,138 @@ function! org#fold#text() abort
   return repeat('*', level) . ' ' . prefix . text . '  (' . nlines . 'L)'
 endfunction
 
-" ── Fold text highlights ──────────────────────────────────────────────────────
-" matchadd() applies to all window content including fold text lines —
-" this is the only pure-Vim way to colour foldtext in Vim 9.x.
-" IDs are window-local (w:) because matchadd() is window-local.
-function! org#fold#setup_hl() abort
-  call org#fold#clear_hl()
-  let w:org_fold_matches = []
+" ── Coloured keywords on closed folds ────────────────────────────────────────
+" Vim paints a closed fold with Folded alone: matchadd(), syntax and text
+" properties never reach fold text (Neovim's List 'foldtext' has no Vim
+" equivalent). So each closed headline fold on screen gets a small popup over
+" its "TODO [#A]" prefix, drawn in orgKw_{KW} / orgPriority on the Folded
+" background. org#fold#kw_popups() runs on SafeState (after zc/zo/zM, <Tab>,
+" scrolling, edits, resizes) and only rebuilds a window's popups when what it
+" shows changed. Popups belong to the tab page they were made in.
 
-  " TODO/DONE/WAITING/… keywords after the stars in headline fold text
-  for kw in s:buf_kws()
-    if hlexists('orgKw_' . kw)
-      let pat = '^\*\+\s\+\zs' . escape(kw, '\') . '\>'
-      call add(w:org_fold_matches, matchadd('orgKw_' . kw, pat, 12))
+let s:kw_pops = {}     " winid -> {'sig': [...], 'ids': [popup ids]}
+
+function! org#fold#setup_hl() abort
+  call org#fold#kw_popups()
+endfunction
+
+function! org#fold#kw_popups() abort
+  if !exists('*popup_create') || !exists('*prop_type_add')
+    return
+  endif
+  let l:tab = tabpagenr()
+  for l:wid in keys(s:kw_pops)
+    if win_id2tabwin(l:wid)[0] == 0
+      call s:close_pops(l:wid)       " the window was closed
     endif
   endfor
+  for l:win in getwininfo()
+    if l:win.tabnr != l:tab || win_gettype(l:win.winid) !=# ''
+      continue
+    endif
+    let l:items = getbufvar(l:win.bufnr, '&filetype') ==# 'org'
+          \ && getwinvar(l:win.winid, '&foldenable')
+          \ ? s:closed_heads(l:win) : []
+    let l:sig = [l:win.bufnr, l:win.winrow, l:win.wincol, l:win.width,
+          \ l:win.textoff, l:items, hlID('Folded')]
+    let l:old = get(s:kw_pops, l:win.winid, {})
+    if get(l:old, 'sig', []) == l:sig
+      continue
+    endif
+    call s:close_pops(l:win.winid)
+    let s:kw_pops[l:win.winid] = {'sig': l:sig,
+          \ 'ids': map(copy(l:items), {_, it -> s:kw_popup(l:win, it)})}
+  endfor
+endfunction
 
-  " Priority cookie [#A] etc.
-  if hlexists('orgPriority')
-    call add(w:org_fold_matches,
-          \ matchadd('orgPriority', '\[#[A-Z]\]', 12))
-  endif
+" [[screen row, column inside the text area, prefix, [[hl group, col, len]…]]…]
+" for the closed headline folds visible in window {win}.
+function! s:closed_heads(win) abort
+  let l:kws = []
+  call win_execute(a:win.winid, 'let l:kws = s:buf_kws()')
+  let l:out = []
+  let l:lnum = a:win.topline
+  let l:bot = a:win.botline
+  let l:lines = {}
+  call win_execute(a:win.winid,
+        \ 'for l:n in range(a:win.topline, a:win.botline)'
+        \ . '| let l:lines[l:n] = [foldclosed(l:n), foldclosedend(l:n)] | endfor')
+  while l:lnum <= l:bot
+    let [l:start, l:end] = get(l:lines, l:lnum, [-1, -1])
+    if l:start == -1
+      let l:lnum += 1
+      continue
+    endif
+    let l:line = getbufline(a:win.bufnr, l:start)[0]
+    let l:m = matchlist(l:line, '^\(\*\+\)\s\+\(\S\+\)\%(\s\+\(\[#.\]\)\)\=')
+    if !empty(l:m)
+      let l:groups = []
+      let l:prefix = ''
+      if index(l:kws, l:m[2]) >= 0 && hlexists('orgKw_' . l:m[2])
+        let l:prefix = l:m[2]
+        call add(l:groups, ['orgKw_' . l:m[2], 1, len(l:m[2])])
+      endif
+      let l:prio = l:prefix !=# '' ? l:m[3] : matchstr(l:line, '^\*\+\s\+\zs\[#.\]')
+      if l:prio !=# '' && hlexists('orgPriority')
+        let l:col = l:prefix ==# '' ? 1 : len(l:prefix) + 2
+        let l:prefix .= (l:prefix ==# '' ? '' : ' ') . l:prio
+        call add(l:groups, ['orgPriority', l:col, len(l:prio)])
+      endif
+      let l:pos = screenpos(a:win.winid, l:start, 1)
+      if !empty(l:groups) && l:pos.row > 0
+        call add(l:out, [l:pos.row, len(l:m[1]) + 1, l:prefix, l:groups])
+      endif
+    endif
+    let l:lnum = l:end + 1
+  endwhile
+  return l:out
+endfunction
 
-  " #+BEGIN_* / #+END_* marker in block fold text lines
-  if hlexists('orgBlockBound')
-    call add(w:org_fold_matches,
-          \ matchadd('orgBlockBound', '\c^#+\%(BEGIN\|END\)_\w\+', 12))
+function! s:kw_popup(win, item) abort
+  let [l:row, l:offset, l:prefix, l:groups] = a:item
+  if l:offset + strdisplaywidth(l:prefix) > a:win.width - a:win.textoff
+    return -1                        " would spill past the window's right edge
   endif
+  let l:props = []
+  for [l:group, l:col, l:len] in l:groups
+    let l:type = 'orgFoldPop_' . l:group
+    if empty(prop_type_get(l:type))
+      call prop_type_add(l:type, {'highlight': l:group, 'combine': 1})
+    endif
+    call add(l:props, {'type': l:type, 'col': l:col, 'length': l:len})
+  endfor
+  return popup_create([{'text': l:prefix, 'props': l:props}], {
+        \ 'line': l:row, 'col': a:win.wincol + a:win.textoff + l:offset,
+        \ 'highlight': 'Folded', 'zindex': 1, 'wrap': 0, 'fixed': 1,
+        \ 'scrollbar': 0, 'tabpage': 0})
+endfunction
 
-  " (NL) line-count suffix
-  if hlexists('FoldColumn')
-    call add(w:org_fold_matches,
-          \ matchadd('FoldColumn', '\s\+(\d\+L)$', 12))
-  endif
+function! s:close_pops(wid) abort
+  for l:id in get(get(s:kw_pops, a:wid, {}), 'ids', [])
+    if l:id > 0
+      call popup_close(l:id)
+    endif
+  endfor
+  silent! call remove(s:kw_pops, a:wid)
+endfunction
+
+" Popups this module shows, for tests: [[line, col, text]…] in screen order.
+function! org#fold#kw_popup_list() abort
+  let l:out = []
+  for l:entry in values(s:kw_pops)
+    for l:id in l:entry.ids
+      if l:id > 0
+        let l:p = popup_getpos(l:id)
+        call add(l:out, [l:p.line, l:p.col,
+              \ getbufline(winbufnr(l:id), 1)[0]])
+      endif
+    endfor
+  endfor
+  return sort(l:out)
 endfunction
 
 function! org#fold#clear_hl() abort
+  call s:close_pops(win_getid())
   for id in get(b:, 'org_fold_matches', [])
     try
       call matchdelete(id)
