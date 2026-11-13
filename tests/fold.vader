@@ -178,3 +178,21 @@ Execute:
   AssertEqual [[1, 2, 'DONE']], FoldPops()
   call org#fold#clear_hl()
   AssertEqual [], org#fold#kw_popup_list()
+
+Execute (after a scroll with keyword popups up, the screen is redrawn whole, as CTRL-L):
+  " With popups visible Vim repaints rows in place instead of scrolling the
+  " terminal, and zellij could keep pieces of old rows.
+  %delete _
+  call setline(1, map(range(1, 200), 'v:val % 2 ? "* TODO Tarea " . v:val : "cuerpo"'))
+  normal! zMgg
+  call FoldPops()
+  let before = org#fold#kw_redraws()
+  call org#fold#kw_popups()
+  AssertEqual before, org#fold#kw_redraws(), 'nothing scrolled'
+  normal! G
+  AssertEqual 1, len(filter(FoldPops(), 'v:val[0] == 199'))
+  AssertEqual before + 1, org#fold#kw_redraws(), 'scrolled'
+  normal! k
+  call org#fold#kw_popups()
+  AssertEqual before + 1, org#fold#kw_redraws(), 'moved without scrolling'
+  call org#fold#clear_hl()

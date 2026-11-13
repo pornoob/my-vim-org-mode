@@ -190,3 +190,19 @@ Execute (prepend: the entry goes before the file's first headline):
   call writefile(['#+TITLE: x', '# comment', '', '* Old', 'body'], g:cap_file)
   call CaptureLines(['* New'])
   AssertEqual ['#+TITLE: x', '# comment', '', '* New', '* Old', 'body'], readfile(g:cap_file)
+
+Execute (a target open in Vim gets the entry through its buffer, unsaved changes kept):
+  " Written to disk behind the buffer's back, saving the buffer later would
+  " drop the entry; line numbers read from the buffer would not match the disk.
+  call writefile(['#+TITLE: T', '* Inbox', '* Old'], g:cap_file)
+  execute 'edit ' . fnameescape(g:cap_file)
+  call setline(1, '#+TITLE: Edited')
+  let target = bufnr('%')
+  hide enew
+  call CaptureLines(['* TODO New'])
+  let want = ['#+TITLE: Edited', '* Inbox', '** TODO New', '* Old']
+  AssertEqual want, getbufline(target, 1, '$')
+  AssertEqual want, readfile(g:cap_file)
+  AssertEqual 0, getbufvar(target, '&modified')
+  AssertEqual 1, winnr('$')
+  execute 'bwipeout! ' . target

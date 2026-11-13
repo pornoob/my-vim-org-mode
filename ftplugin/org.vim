@@ -87,9 +87,14 @@ nnoremap <buffer> <silent> <C-c><C-z> :OrgAddNote<CR>
 
 " ── Archive ───────────────────────────────────────────────────────────────
 execute 'nnoremap <buffer> <silent> ' . s:l . '$  :OrgArchive<CR>'
+execute 'xnoremap <buffer> <silent> ' . s:l . '$  :OrgArchive<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'w  :OrgRefile<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
 execute 'xnoremap <buffer> <silent> ' . s:l . 'l  :OrgInsertLink<CR>'
+" Emacs' C-c C-l, also while typing: the link goes at the cursor, insert goes on
+nnoremap <buffer> <silent> <C-c><C-l> :OrgInsertLink<CR>
+xnoremap <buffer> <silent> <C-c><C-l> :OrgInsertLink<CR>
+inoremap <buffer> <silent> <C-c><C-l> <Cmd>call org#link#insert(0, 1)<CR>
 execute 'nnoremap <buffer> <silent> ' . s:l . 'L  :OrgStoreLink<CR>'
 execute 'nnoremap <buffer> <silent> ' . s:l . '/  :OrgSparseTree<CR>'
 
@@ -150,6 +155,9 @@ let b:undo_ftplugin =
   \ . '| silent! nunmap <buffer> ' . s:l . 'w'
   \ . '| silent! nunmap <buffer> ' . s:l . 'l'
   \ . '| silent! xunmap <buffer> ' . s:l . 'l'
+  \ . '| silent! nunmap <buffer> <C-c><C-l>'
+  \ . '| silent! xunmap <buffer> <C-c><C-l>'
+  \ . '| silent! iunmap <buffer> <C-c><C-l>'
   \ . '| silent! nunmap <buffer> ' . s:l . 'L'
   \ . '| silent! nunmap <buffer> ' . s:l . '/'
   \ . '| call org#fold#clear_hl()'

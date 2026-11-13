@@ -96,7 +96,7 @@ Execute:
 Expect org:
   Call [[id:doc][Dr. Muñoz]] today
 
-Given org (store: id: when the headline has an ID, else file::*Title):
+Given org (store: id:, creating the :ID: when the headline has none):
   * TODO [#A] Pay rent :home:
   :PROPERTIES:
   :ID:       abc-123
@@ -111,8 +111,68 @@ Execute:
   6
   call org#link#store()
   AssertEqual 'Plain heading', g:org_stored_links[0].desc
-  Assert g:org_stored_links[0].link =~# '^file:.*::\*Plain heading$', g:org_stored_links[0].link
+  Assert getline(7) =~# '^:ID:       [0-9a-f-]\{36}$', getline(7)
+  AssertEqual 'id:' . matchstr(getline(7), '\S\+$'), g:org_stored_links[0].link
   AssertEqual 2, len(g:org_stored_links)
+
+Given org (store with g:org_link_store_id = 0: file::*Title when there is no :ID:):
+  * Plain heading
+  body
+
+Execute:
+  let g:org_stored_links = []
+  let g:org_link_store_id = 0
+  call org#link#store()
+  unlet g:org_link_store_id
+  Assert g:org_stored_links[0].link =~# '^file:.*::\*Plain heading$', g:org_stored_links[0].link
+  AssertEqual 2, line('$')
+
+Given org (C-c C-l in insert mode inserts at the cursor and goes on inserting):
+  See  today
+
+Execute:
+  call cursor(1, 4)
+  call feedkeys("a\<C-c>\<C-l>https://x.cl\<CR>the docs\<CR>, please\<Esc>", 'tx')
+
+Expect org:
+  See [[https://x.cl][the docs]], please today
+
+Given org (C-c C-l at the end of a line in insert mode):
+  Previous:
+
+Execute:
+  call feedkeys("A \<C-c>\<C-l>id:abc\<CR>\<CR>.\<Esc>", 'tx')
+
+Expect org:
+  Previous: [[id:abc]].
+
+Given org (C-c C-l in insert mode on an empty line):
+
+
+Execute:
+  call feedkeys("i\<C-c>\<C-l>id:abc\<CR>\<CR>.\<Esc>", 'tx')
+
+Expect org:
+  [[id:abc]].
+
+Given org (C-c C-l in insert mode, cancelled, keeps inserting where it was):
+  ab
+
+Execute:
+  call cursor(1, 1)
+  call feedkeys("a\<C-c>\<C-l>\<CR>X\<Esc>", 'tx')
+
+Expect org:
+  aXb
+
+Given org (C-c C-l in normal mode is {leader}l):
+  x
+
+Execute:
+  call feedkeys("\<C-c>\<C-l>id:abc\<CR>\<CR>", 'tx')
+
+Expect org:
+  x[[id:abc]]
 
 Given org (inserting a stored link offers it and its description):
   x

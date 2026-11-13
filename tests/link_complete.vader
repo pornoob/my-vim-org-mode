@@ -53,6 +53,15 @@ Execute:
   let a = readfile(g:lc_dir . '/a.org')
   AssertEqual ['* Meeting 2026-10-22', ':PROPERTIES:', ':ID:       ' . id, ':END:'], a[4:7]
 
+Given org (C-c C-l in insert mode at the end of a line, the ID made in another file):
+  Previous:
+
+Execute:
+  call feedkeys("A \<C-c>\<C-l>id:Meeting 2026-10-22\<CR>\<CR> ok\<Esc>", 'tx')
+  let id = matchstr(readfile(g:lc_dir . '/a.org')[6], '\S\+$')
+  Assert id =~# '^\x\{8}-', id
+  AssertEqual 'Previous: [[id:' . id . '][Meeting 2026-10-22]] ok', getline(1)
+
 Given org (a headline of this buffer above the cursor gets its ID, link on the right line):
   * Here
   text
@@ -90,3 +99,56 @@ Execute (a typed id that is no title is kept as it is):
   call feedkeys("id:abc-123\<CR>\<CR>", 't')
   call org#link#insert(0)
   AssertEqual 'x[[id:abc-123][Pay rent]]', getline(1)
+
+Execute (spaces after id: are ignored, in completion and in the answer):
+  AssertEqual ['id:Meeting 2026-10-22'], org#link#complete('', 'id: meet', 0)
+
+Execute (from the capture buffer, a headline of another file gets its :ID: there):
+  " The capture buffer cannot be hidden (bufhidden=wipe): the ID is made in a
+  " split, not by switching this window to the other file (E37 before).
+  new
+  setlocal buftype=acwrite bufhidden=wipe noswapfile nobuflisted filetype=org
+  call setline(1, 'Ver ')
+  let capwin = win_getid()
+  normal! $
+  call feedkeys("id: Meeting 2026-10-22\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  AssertEqual capwin, win_getid()
+  let id = matchstr(readfile(g:lc_dir . '/a.org')[6], ':ID:\s\+\zs\S\+')
+  Assert id !=# '', string(readfile(g:lc_dir . '/a.org'))
+  AssertEqual 'Ver [[id:' . id . '][Meeting 2026-10-22]]', getline(1)
+  AssertEqual 2, winnr('$')
+  bwipeout!
+
+Execute (an agenda file open in Vim is read from its buffer, where its :ID: goes):
+  " The disk may be behind the buffer (or ahead: a capture writes the file
+  " directly). Line numbers from the disk put the drawer on the wrong line.
+  execute 'hide edit ' . fnameescape(g:lc_dir . '/a.org')
+  call append(0, ['#+TITLE: A', ''])
+  hide enew
+  call setline(1, 'Ver ')
+  normal! $
+  call feedkeys("id:Meeting 2026-10-22\<CR>\<CR>", 't')
+  call org#link#insert(0)
+  let lines = readfile(g:lc_dir . '/a.org')
+  AssertEqual ['#+TITLE: A', '', '* TODO [#A] Pay rent :home:'], lines[0:2]
+  AssertEqual ['* Meeting 2026-10-22', ':PROPERTIES:'], lines[6:7]
+  AssertEqual 'Ver [[id:' . matchstr(lines[8], '\S\+$') . '][Meeting 2026-10-22]]', getline(1)
+  bwipeout!
+
+Execute (a headline that moved since it was offered gets no :ID: on the wrong line):
+  execute 'hide edit ' . fnameescape(g:lc_dir . '/b.org')
+  call append(0, 'unsaved')            " the split must still close (no E37)
+  let F = SFunc('link', 'ensure_id')
+  hide enew
+  let wins = winnr('$')
+  let err = ''
+  try
+    call F({'file': g:lc_dir . '/b.org', 'lnum': 1, 'title': 'Other', 'id': ''})
+  catch
+    let err = v:exception
+  endtry
+  Assert err =~# '^org: .* no :ID: written', err
+  AssertEqual wins, winnr('$'), 'the split is closed'
+  AssertEqual ['* Same'], readfile(g:lc_dir . '/b.org')
+  bwipeout!

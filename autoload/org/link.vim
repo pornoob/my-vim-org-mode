@@ -206,8 +206,12 @@ endfunction
 " Insert a link at the cursor, or edit the one under it (Emacs' C-c C-l).
 " Prompts for the target, offering stored links, then the description. With
 " {visual} set, the last visual selection is replaced and becomes the default
-" description.
-function! org#link#insert(visual) abort
+" description. With [insert] set (called by <Cmd> from insert mode), the link
+" goes before the cursor and the cursor ends after it, so typing goes on.
+function! org#link#insert(visual, ...) abort
+  let insert = get(a:, 1, 0)
+  " Taken now: creating an ID in another file below moves the cursor
+  let col  = col('.')
   let line = getline('.')
   let cur  = a:visual ? {} : s:link_at_pos(line, col('.'))
   if a:visual
@@ -231,9 +235,14 @@ function! org#link#insert(visual) abort
   " A headline title picked after id: becomes that headline's ID
   let title = ''
   if url =~# '^id:'
-    let hl = s:id_target(url[3:])
+    let hl = s:id_target(trim(url[3:]))
     if !empty(hl)
-      let url   = 'id:' . s:ensure_id(hl)
+      try
+        let url = 'id:' . s:ensure_id(hl)
+      catch /^org: /
+        echohl ErrorMsg | echomsg v:exception[5:] | echohl None
+        return
+      endtry
       let title = hl.title
     endif
   elseif url =~# '^\%(file:.*::\)\=\*'
@@ -248,13 +257,16 @@ function! org#link#insert(visual) abort
 
   let text = s:format(url, desc)
   if has_key(cur, 'start')
-    call setline('.', strpart(line, 0, cur.start) . text . strpart(line, cur.end))
-    call cursor(line('.'), cur.start + 1)
+    let at = cur.start
+    call setline('.', strpart(line, 0, at) . text . strpart(line, cur.end))
   else
-    let at = col('.') - 1 + (line ==# '' ? 0 : len(matchstr(line[col('.') - 1 :], '^.')))
+    let at = col - 1
+    if !insert && line !=# ''
+      let at += len(matchstr(line[at :], '^.'))   " after the character under the cursor
+    endif
     call setline('.', strpart(line, 0, at) . text . strpart(line, at))
-    call cursor(line('.'), at + 1)
   endif
+  call cursor(line('.'), at + 1 + (insert ? len(text) : 0))
 endfunction
 
 " Completion for the Link: prompt. After id: the headlines of this buffer and
@@ -262,7 +274,7 @@ endfunction
 " paths, and after file:PATH::* that file's headlines. Otherwise the stored
 " links, then the link types. Titles match anywhere, ignoring case.
 function! org#link#complete(lead, line, pos) abort
-  let typed = a:line
+  let typed = substitute(a:line, '^id:\s\+', 'id:', '')
   if typed =~# '^id:'
     return s:matching(map(s:labelled(s:headlines()), '"id:" . v:val.label'), 3, typed)
   elseif typed =~# '^\*'
@@ -329,7 +341,10 @@ function! s:headlines() abort
   for f in org#core#agenda_files()
     let f = fnamemodify(f, ':p')
     if f !=# cur && filereadable(f)
-      call extend(out, s:scan(readfile(f), f))
+      " A file open in Vim is read from its buffer: that is where its :ID:
+      " will be written, and the disk may be behind it (or ahead: a capture
+      " writes the file directly)
+      call extend(out, s:scan(bufloaded(f) ? getbufline(bufnr(f), 1, '$') : readfile(f), f))
     endif
   endfor
   return out
@@ -375,17 +390,29 @@ function! s:ensure_id(hl) abort
   if a:hl.file ==# expand('%:p')
     return org#id#ensure(a:hl.lnum)
   endif
-  let [buf, view] = [bufnr('%'), winsaveview()]
-  execute 'keepalt hide edit ' . fnameescape(a:hl.file)
-  let id = org#id#ensure(a:hl.lnum)
-  silent update
-  execute 'keepalt hide buffer ' . buf
-  call winrestview(view)
+  " In a split, not in this window: a buffer that cannot be hidden (the
+  " capture buffer, bufhidden=wipe) would refuse to give the window up (E37)
+  let win = win_getid()
+  execute 'silent keepalt keepjumps split ' . fnameescape(a:hl.file)
+  try
+    let m = matchstr(getline(a:hl.lnum), '^\*\+\s\+\zs.*')
+    if m ==# '' || org#core#headline_title(m) !=# a:hl.title
+      throw 'org: ' . fnamemodify(a:hl.file, ':~') . ' changed, "' . a:hl.title
+            \ . '" is no longer on line ' . a:hl.lnum . ': no :ID: written'
+    endif
+    let id = org#id#ensure(a:hl.lnum)
+    silent update
+  finally
+    hide
+    call win_gotoid(win)
+  endtry
   return id
 endfunction
 
 " Store a link to the headline at the cursor for org#link#insert (Emacs'
-" C-c l): id:UUID when it has an :ID:, else file:PATH::*Title.
+" C-c l): id:UUID, creating the :ID: when it has none (Doom's
+" org-id-link-to-org-use-id). With g:org_link_store_id = 0 a headline without
+" :ID: gets file:PATH::*Title instead.
 function! org#link#store() abort
   let hl   = org#core#current_headline()
   let file = fnamemodify(expand('%:p'), ':~')
@@ -400,6 +427,9 @@ function! org#link#store() abort
         let id = matchstr(getline(l), '^\s*:ID:\s\+\zs\S\+')
         if id !=# '' | break | endif
       endfor
+    endif
+    if id ==# '' && get(g:, 'org_link_store_id', 1)
+      let id = org#id#ensure(hl.lnum)
     endif
     let entry = {'link': id !=# '' ? 'id:' . id : 'file:' . file . '::*' . title, 'desc': title}
   endif

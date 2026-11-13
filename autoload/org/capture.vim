@@ -101,7 +101,13 @@ function! org#capture#finalize() abort
     return
   endif
 
-  let existing = filereadable(target) ? readfile(target) : []
+  " A target open in Vim is filed through its buffer, as Emacs does: written
+  " behind its back, the buffer would be stale and saving it would drop the
+  " entry (and its unsaved changes are kept and saved with the entry)
+  let path = fnamemodify(target, ':p')
+  let buf  = get(map(filter(getbufinfo({'bufloaded': 1}), 'v:val.name ==# path'), 'v:val.bufnr'), 0, -1)
+  let existing = buf > 0 ? getbufline(buf, 1, '$')
+        \ : filereadable(target) ? readfile(target) : []
   let headline = get(b:, 'org_capture_headline', '')
   let entry    = getline(1, '$')
   if headline !=# ''
@@ -114,7 +120,19 @@ function! org#capture#finalize() abort
   else
     let lines = existing + entry
   endif
-  call writefile(lines, target)
+  if buf > 0
+    let win = win_getid()
+    execute 'silent keepalt keepjumps sbuffer ' . buf
+    call setline(1, lines)
+    if line('$') > len(lines)
+      silent execute (len(lines) + 1) . ',$delete _'
+    endif
+    silent update
+    hide
+    call win_gotoid(win)
+  else
+    call writefile(lines, target)
+  endif
 
   echo 'Captured to: ' . target
   bwipeout!

@@ -124,7 +124,14 @@ endfunction
 " scrolling, edits, resizes) and only rebuilds a window's popups when what it
 " shows changed. Popups belong to the tab page they were made in.
 
-let s:kw_pops = {}     " winid -> {'sig': [...], 'ids': [popup ids]}
+let s:kw_pops = {}     " winid -> {'sig': [...], 'view': [top, bot], 'ids': [popup ids]}
+let s:kw_redraws = 0   " full redraws done after a scroll, for tests
+
+" While one of these popups is visible Vim never scrolls the terminal: it
+" repaints every row in place, skipping unchanged cells with relative cursor
+" moves, several times the output. Multiplexers (zellij) can lose track and
+" leave pieces of old rows on screen. So when a window that had popups has
+" scrolled, the whole screen is redrawn from scratch, as CTRL-L does.
 
 function! org#fold#setup_hl() abort
   call org#fold#kw_popups()
@@ -135,6 +142,7 @@ function! org#fold#kw_popups() abort
     return
   endif
   let l:tab = tabpagenr()
+  let l:scrolled = 0
   for l:wid in keys(s:kw_pops)
     if win_id2tabwin(l:wid)[0] == 0
       call s:close_pops(l:wid)       " the window was closed
@@ -150,13 +158,22 @@ function! org#fold#kw_popups() abort
     let l:sig = [l:win.bufnr, l:win.winrow, l:win.wincol, l:win.width,
           \ l:win.textoff, l:items, hlID('Folded')]
     let l:old = get(s:kw_pops, l:win.winid, {})
+    if !empty(get(l:old, 'ids', [])) && l:old.view[0] != l:win.topline
+      let l:scrolled = 1
+      let l:old.view = [l:win.topline, l:win.botline]
+    endif
     if get(l:old, 'sig', []) == l:sig
       continue
     endif
     call s:close_pops(l:win.winid)
     let s:kw_pops[l:win.winid] = {'sig': l:sig,
+          \ 'view': [l:win.topline, l:win.botline],
           \ 'ids': map(copy(l:items), {_, it -> s:kw_popup(l:win, it)})}
   endfor
+  if l:scrolled
+    let s:kw_redraws += 1
+    redraw!
+  endif
 endfunction
 
 " [[screen row, column inside the text area, prefix, [[hl group, col, len]…]]…]
@@ -227,7 +244,14 @@ function! s:close_pops(wid) abort
       call popup_close(l:id)
     endif
   endfor
-  silent! call remove(s:kw_pops, a:wid)
+  if has_key(s:kw_pops, a:wid)
+    call remove(s:kw_pops, a:wid)
+  endif
+endfunction
+
+" Full redraws done after a scroll, for tests.
+function! org#fold#kw_redraws() abort
+  return s:kw_redraws
 endfunction
 
 " Popups this module shows, for tests: [[line, col, text]…] in screen order.

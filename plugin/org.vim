@@ -22,7 +22,7 @@ command! OrgToggleLinkDisplay call org#link#toggle_display()
 command! OrgTags           call org#tags#edit()
 command! OrgSetID          call org#id#set()
 command! OrgAddNote        call org#note#add()
-command! OrgArchive        call org#archive#subtree()
+command! -range OrgArchive call call("org#archive#subtree", <range> > 0 ? [<line1>, <line2>] : [])
 command! OrgRefile         call org#refile#subtree()
 command! -nargs=? OrgSparseTree call org#sparse#tree(<f-args>)
 " With a range (:'<,'>OrgCapture, or {leader}C in visual mode) the selection fills %i

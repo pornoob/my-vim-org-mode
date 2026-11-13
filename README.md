@@ -183,7 +183,8 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}x` | Normal | Toggle checkbox `[ ]` → `[X]` → `[-]` → `[ ]` |
 | `{leader}x` | Visual | Toggle all checkboxes in selection |
 | `{leader}l` | Normal / Visual | [Insert or edit a link](#inserting-and-editing) (visual: selection becomes the description) |
-| `{leader}L` | Normal | Store a link to the current headline for `{leader}l` |
+| `<C-c><C-l>` | Normal / Visual / Insert | The same; in insert mode the link goes at the cursor and you keep typing after it |
+| `{leader}L` | Normal | Store a link to the current headline for `{leader}l` (gives it an `:ID:` if it has none) |
 | `{leader}o` | Normal | [Open link](#links) under cursor (`[[url]]`, `[[file:path::*Heading]]`, `[[id:uuid]]`, `[[*Heading]]`) |
 | `<CR>` | Normal | Open link under cursor (same as `{leader}o`) |
 | `{leader},` | Normal | Cycle priority `[#A]` → `[#B]` → `[#C]` → _(none)_ |
@@ -192,6 +193,7 @@ All mappings are **buffer-local** (only active in `.org` files) and use the
 | `{leader}i` | Normal | Generate and insert `:ID:` property |
 | `{leader}z` / `<C-c><C-z>` | Normal | [Add a note](#notes) to the current entry's `:LOGBOOK:` |
 | `{leader}$` | Normal | [Archive](#archiving) subtree to `*.org_archive` |
+| `{leader}$` | Visual | [Archive](#archiving) every headline in the selection |
 | `{leader}w` | Normal | [Refile](#refiling) subtree under another headline (this file or any agenda file) |
 | `{leader}C` | Normal / Visual | **Global** — open capture template (works from any filetype; uses `g:org_leader` or `\`, never `maplocalleader`). In visual mode the selection fills `%i` |
 | `<C-c><C-c>` | Normal | [Context action](#context-action) — update whatever is under the cursor |
@@ -630,7 +632,8 @@ Answering `acme`, then `thu 20:30` gives:
   Previous:
 ```
 
-At `%?`, `{leader}l` and `id:` + `<Tab>` link the previous meeting by its title.
+At `%?`, `{leader}l` (or `<C-c><C-l>` while typing) and `id:` + `<Tab>` link the
+previous meeting by its title.
 If an agenda directory holds the templates, give them an extension other than
 `.org`: the agenda reads every `.org` file under it, and would list the
 template's `TODO`.
@@ -684,6 +687,9 @@ Where the entry lands:
 - With `headline` but the headline is missing (or the file does not exist yet) → the
   headline is created at the end of the file, as Emacs does.
 - Without `headline` → appended at the end of the file, levels untouched.
+- A target file open in Vim gets the entry through its buffer, which is then saved
+  (with any unsaved changes it had), as Emacs does; one that is not open is written
+  directly.
 
 ---
 
@@ -802,6 +808,14 @@ entry, with its context recorded in `:PROPERTIES:`:
   `ARCHIVE_CATEGORY` is the file's `#+CATEGORY:` or its name.
 - The source buffer is modified, not saved.
 
+**Archiving many at once.** In Visual mode `{leader}$` (or `:'<,'>OrgArchive`)
+archives every headline whose line is inside the selection, like Emacs' `C-c C-x
+C-s` on an active region with `org-loop-over-headlines-in-active-region`. They go
+in document order, each with its own `ARCHIVE_OLPATH`. A headline takes its whole
+subtree, even the part past the end of the selection, and headlines inside it are
+not archived a second time. With a same-file location (`'::* Archive'`), the archive
+heading itself is skipped.
+
 `g:org_archive_location` takes Emacs' `FILE::HEADING` syntax:
 
 | Value | Archives to |
@@ -878,7 +892,8 @@ Links inside `#` comment lines are left raw.
 |---|---|---|---|
 | `{leader}l` | `:OrgInsertLink` | `C-c C-l` | On a link: edit its target and description (prefilled). Elsewhere: insert a new link after the cursor. Asks `Link:` then `Description:`; an empty link cancels, an empty description gives `[[target]]` |
 | `{leader}l` (visual) | `:'<,'>OrgInsertLink` | `C-c C-l` | Turn the selection (on one line) into a link, with the selection as its description |
-| `{leader}L` | `:OrgStoreLink` | `C-c l` | Store a link to the current headline: `id:…` if it has an `:ID:` (`{leader}i` adds one), else `file:path::*Title` |
+| `<C-c><C-l>` (insert) | — | `C-c C-l` | Insert a link at the cursor without leaving insert mode: the same prompts, then typing goes on after the link (needs Vim 8.2.1978, for `<Cmd>`) |
+| `{leader}L` | `:OrgStoreLink` | `C-c l` | Store a link to the current headline as `id:…`, giving it an `:ID:` when it has none (Doom's `org-id-link-to-org-use-id`). With `let g:org_link_store_id = 0`, a headline without `:ID:` is stored as `file:path::*Title` instead |
 
 The `Link:` prompt completes with `<Tab>`, by what has been typed so far:
 

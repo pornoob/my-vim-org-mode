@@ -77,3 +77,43 @@ Execute (not on a headline: nothing happens):
   call org#archive#subtree()
   AssertEqual ['intro'], getline(1, '$')
   AssertEqual 0, filereadable(g:arc_src . '_archive')
+
+" ── Region (visual selection), as Emacs with org-loop-over-headlines-in-active-region
+
+Execute (helper):
+  " Open {lines} as notes.org, archive lines {first}..{last} through the
+  " command, return the archive file's lines.
+  function! ArchiveRegion(lines, first, last) abort
+    call writefile(a:lines, g:arc_src)
+    execute 'edit! ' . fnameescape(g:arc_src)
+    execute a:first . ',' . a:last . 'OrgArchive'
+    let afile = g:arc_src . '_archive'
+    return filereadable(afile) ? readfile(afile) : []
+  endfunction
+
+Execute (region: every headline in it, in order; children go with their parent):
+  let got = ArchiveRegion(['* Keep', '* DONE One', '** Child', '* TODO Two', 'text', '* DONE Three', '* Last'], 2, 6)
+  AssertEqual ['* DONE One', '** Child', '* TODO Two', 'text', '* DONE Three'],
+        \ filter(copy(got), 'v:val =~# "^\\*\\|^text"')
+  AssertEqual ['* Keep', '* Last'], getline(1, '$')
+
+Execute (region: a headline whose subtree runs past the region goes whole):
+  let got = ArchiveRegion(['* A', '* DONE B', 'body', '** Child', 'more', '* C'], 1, 2)
+  AssertEqual ['* A', '* DONE B', 'body', '** Child', 'more'], filter(copy(got), 'v:val !~# "^\\s*:\\|^$\\|^Archived"')
+  AssertEqual ['* C'], getline(1, '$')
+
+Execute (region: each entry keeps its own outline path):
+  let got = ArchiveRegion(['* P', '** Q', '*** DONE x', '** DONE y'], 3, 4)
+  AssertEqual [':ARCHIVE_OLPATH: P/Q', ':ARCHIVE_OLPATH: P'], filter(copy(got), 'v:val =~# "OLPATH"')
+  AssertEqual ['* P', '** Q'], getline(1, '$')
+
+Execute (region: same-file location never archives the archive heading):
+  let g:org_archive_location = '::* Archive'
+  call ArchiveRegion(['* Work', '** DONE a', '** DONE b', '* Archive', '** DONE old'], 2, 5)
+  AssertEqual ['* Work', '* Archive', '** DONE old', '** DONE a', '** DONE b'],
+        \ filter(getline(1, '$'), 'v:val =~# "^\\*"')
+
+Execute (region without headlines: nothing happens):
+  call ArchiveRegion(['intro', 'more', '* A'], 1, 2)
+  AssertEqual ['intro', 'more', '* A'], getline(1, '$')
+  AssertEqual 0, filereadable(g:arc_src . '_archive')

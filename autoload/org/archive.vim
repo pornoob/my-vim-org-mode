@@ -2,33 +2,81 @@
 " does with its default settings.
 
 " Move the subtree at the cursor to the archive location, stamped with the
-" ARCHIVE_* context properties.
-function! org#archive#subtree() abort
-  let hl = org#core#current_headline()
-  if empty(hl)
-    echohl WarningMsg | echo 'Not on a headline' | echohl None
-    return
+" ARCHIVE_* context properties. With {first} and {last} lines (a visual
+" selection), archive every headline in those lines instead, as Emacs does
+" with org-loop-over-headlines-in-active-region: a headline inside a subtree
+" already taken goes with it.
+function! org#archive#subtree(...) abort
+  let [afile, heading] = s:location()
+  if a:0
+    let hls = s:region_headlines(a:1, a:2, afile ==# expand('%:p') ? heading : '')
+    if empty(hls)
+      echohl WarningMsg | echo 'No headlines in the region' | echohl None
+      return
+    endif
+  else
+    let hl = org#core#current_headline()
+    if empty(hl)
+      echohl WarningMsg | echo 'Not on a headline' | echohl None
+      return
+    endif
+    let hls = [hl]
   endif
 
-  let [afile, heading] = s:location()
-  let last  = org#core#subtree_end(hl.lnum)
-  let entry = s:with_context(hl, getline(hl.lnum, last))
+  " Take every entry (and its context) before deleting anything
+  let spans   = map(copy(hls), '[v:val.lnum, org#core#subtree_end(v:val.lnum)]')
+  let entries = map(copy(hls), 's:with_context(v:val, getline(spans[v:key][0], spans[v:key][1]))')
 
   if afile ==# expand('%:p')
     " Archiving into this same file (location '::* Heading')
-    execute 'silent' hl.lnum . ',' . last . 'delete _'
-    let lines = org#core#file_entry(getline(1, '$'), heading, entry)
+    call s:delete(spans)
+    let lines = getline(1, '$')
+    for entry in entries
+      let lines = org#core#file_entry(lines, heading, entry)
+    endfor
     silent %delete _
     call setline(1, lines)
   else
-    let existing = filereadable(afile) ? readfile(afile)
+    let lines = filereadable(afile) ? readfile(afile)
           \ : ['', 'Archived entries from file ' . expand('%:p'), '']
-    call writefile(heading ==# ''
-          \ ? existing + org#core#set_level(entry, 1)
-          \ : org#core#file_entry(existing, heading, entry), afile)
-    execute 'silent' hl.lnum . ',' . last . 'delete _'
+    for entry in entries
+      let lines = heading ==# ''
+            \ ? lines + org#core#set_level(entry, 1)
+            \ : org#core#file_entry(lines, heading, entry)
+    endfor
+    call writefile(lines, afile)
+    call s:delete(spans)
   endif
-  echo 'Archived to: ' . fnamemodify(afile, ':~') . (heading ==# '' ? '' : ' under ' . heading)
+  echo 'Archived ' . (len(entries) == 1 ? '' : len(entries) . ' entries ')
+        \ . 'to: ' . fnamemodify(afile, ':~') . (heading ==# '' ? '' : ' under ' . heading)
+endfunction
+
+" Delete the [first, last] line {spans} (top-down, disjoint) bottom-up, so
+" the line numbers still hold.
+function! s:delete(spans) abort
+  for [first, last] in reverse(copy(a:spans))
+    execute 'silent' first . ',' . last . 'delete _'
+  endfor
+endfunction
+
+" Headlines on lines {first}..{last}, top-down, leaving out those inside an
+" earlier one's subtree and the {skip} headline's subtree (the archive heading
+" of a same-file location).
+function! s:region_headlines(first, last, skip) abort
+  let hls  = []
+  let lnum = a:first
+  while lnum <= a:last
+    let m = matchlist(getline(lnum), '^\(\*\+\)\s\+\(.*\)$')
+    if empty(m)
+      let lnum += 1
+      continue
+    endif
+    if a:skip ==# '' || getline(lnum) !=# a:skip
+      call add(hls, {'lnum': lnum, 'level': len(m[1]), 'text': m[2], 'line': m[0]})
+    endif
+    let lnum = org#core#subtree_end(lnum) + 1
+  endwhile
+  return hls
 endfunction
 
 " [archive file, heading] from g:org_archive_location, in Emacs' syntax
